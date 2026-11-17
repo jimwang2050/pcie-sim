@@ -280,12 +280,14 @@ test('DPC + RP PIO 场景：触发、隔离、UR Completion 与恢复', () => {
   assert.equal(d.enabled, true);
   assert.equal(d.reason, '');
   assert.equal(d.urCompletions, 1);
-  assert.equal(d.blocked, 1);
+  assert.equal(d.postedDropped, 1, 'Posted 请求不应合成 Completion');
+  assert.equal(d.blocked, 2);
   assert.equal(d.interrupts, 1);
 
   const summaries = sim.events.map((e) => e.summary || '');
   assert.ok(summaries.some((s) => s.includes('DPC 触发')), '缺少 DPC 触发事件');
   assert.ok(summaries.some((s) => s.includes('UR Completion')), '缺少 RP PIO UR Completion');
+  assert.ok(summaries.some((s) => s.includes('Posted MWr 被丢弃')), '缺少 Posted 丢弃事件');
   assert.ok(summaries.some((s) => s.includes('Egress Control')), '缺少 Egress Control');
   assert.equal(sim.link.ports.RC.state, 'L0');
 });
@@ -615,17 +617,19 @@ test('BERT 模型：锁定、累计、注入与清除', () => {
   b.lock();
   b.accumulate(1e9, 0);
   assert.equal(b.ber, 0);
-  assert.equal(b.pass, true);
+  assert.equal(b.verdict, 'INSUFFICIENT', '1 Gb 零错误不足以在 1e-12 目标下判 PASS');
+  assert.equal(b.pass, false);
 
   b.inject(3);
   assert.ok(b.ber > 1e-12);
-  assert.equal(b.pass, false);
+  assert.equal(b.verdict, 'FAIL');
 
   b.clear();
-  b.accumulate(1e9, 0);
-  assert.equal(b.pass, true);
+  b.accumulate(b.bitsNeeded, 0);
+  assert.equal(b.verdict, 'PASS', '样本量达到 bitsNeeded 后才判 PASS');
   assert.equal(formatBits(1e9), '1.0 Gb');
   assert.ok(b.injections.some((h) => h.kind === 'inject'));
+  assert.equal(formatBits(b.bitsNeeded), '3.0 Tb', '1e-12 目标零错误需要约 3 Tb 采样');
 });
 
 test('Loopback / BERT：Internal 与 External 是两套独立配置', () => {
@@ -742,9 +746,11 @@ test('内存写场景：Posted 写 + 读回一致', () => {
   assert.equal(sim.mem.read32(0x80001000), 0xdeadbeef);
   assert.equal(sim.mem.read32(0x80001004), 0xcafebabe);
   assert.equal(sim.fc.available.RC.P_Hdr, 8);
-  assert.equal(sim.fc.available.RC.P_Data, 32);
+  assert.equal(sim.fc.available.RC.P_Data, 2, '本场景只通告 2 个 Data 信用');
   assert.equal(sim.fc.available.RC.NP_Hdr, 8);
   assert.equal(sim.fc.available.EP.Cpl_Data, 64);
+  assert.equal(sim.fc.blocked.RC, 1, 'P_Data 不足时应阻塞一次且不产生负信用');
+  assert.ok(sim.fc.available.RC.P_Data >= 0);
 
   const cpl = sim.events.find((e) => e.type === 'CplD' && e.packet && e.packet.tag === 2);
   assert.ok(cpl);
@@ -783,8 +789,10 @@ test('MSI 场景：MSI + MSI-X + mask', () => {
 
   assert.equal(sim.msi.msiEnabled, true);
   assert.equal(sim.msi.msixEnabled, true);
-  assert.equal(sim.msi.interrupts.length, 5);
+  assert.equal(sim.msi.interrupts.length, 6);
   assert.equal(sim.msi.suppressed, 1);
+  assert.equal(sim.msi.pendingDelivered, 1, '被 mask 的触发进入 Pending，解除后补发一次');
+  assert.equal(sim.msi.snapshot().pending, 0);
 
   const types = new Set(sim.events.map((e) => e.type));
   for (const t of ['MSI', 'MSI-X', 'INT']) {
@@ -800,10 +808,12 @@ test('AER 场景：三类错误 + Hot Reset', () => {
 
   assert.equal(sim.aer.correctable, 1);
   assert.equal(sim.aer.nonfatal, 1);
-  assert.equal(sim.aer.fatal, 1);
+  assert.equal(sim.aer.fatal, 1, 'Severity 重映射后按 Fatal 上报');
+  assert.equal(sim.aer.messages, 2, 'Mask=1 的那条只记录、不发消息');
+  assert.equal(sim.aer.masked, 1);
 
   const types = new Set(sim.events.map((e) => e.type));
-  for (const t of ['ERR_COR', 'ERR_NONFATAL', 'ERR_FATAL', 'INT', 'ERROR']) {
+  for (const t of ['ERR_COR', 'ERR_FATAL', 'AER', 'INT', 'ERROR']) {
     assert.ok(types.has(t), `缺少事件类型 ${t}`);
   }
   assert.equal(sim.link.ports.RC.state, 'Detect.Quiet');

@@ -75,7 +75,8 @@ export function buildMsiInt(sim, opts = {}) {
       const ok = msi.triggerMsix(index);
       sim.emit({
         layer: 'STATE', row: 'STATE', type: 'INT',
-        summary: ok ? `MSI-X entry ${index} → RC 触发中断` : `MSI-X entry ${index} 被 mask，无中断`,
+        summary: ok ? `MSI-X entry ${index} → RC 触发中断` : `MSI-X entry ${index} 被 mask → 置 Pending`,
+        detail: ok ? '表项未屏蔽，立即产生中断' : 'Mask 只延迟中断：Pending 位置 1，解除屏蔽后补发，不会丢弃',
         status: ok ? 'ok' : 'idle',
       });
     });
@@ -97,17 +98,20 @@ export function buildMsiInt(sim, opts = {}) {
     msi.maskMsix(3, true);
     sim.emit({
       layer: 'STATE', row: 'STATE', type: 'MSI-X',
-      summary: 'MSI-X entry 3 置 mask', detail: '被 mask 的表项即使触发也不会产生中断',
+      summary: 'MSI-X entry 3 置 mask',
+      detail: '屏蔽期间触发只置 Per-vector Pending，不产生中断、也不丢失',
       status: 'ok',
     });
   });
   sendMsix(156 * US, 3);
 
   sim.at(180 * US, () => {
-    msi.maskMsix(3, false);
+    const n = msi.maskMsix(3, false);
     sim.emit({
       layer: 'STATE', row: 'STATE', type: 'MSI-X',
-      summary: 'MSI-X entry 3 解除 mask', status: 'ok',
+      summary: `MSI-X entry 3 解除 mask：补发 ${n} 个 Pending 中断`,
+      detail: '解除屏蔽后硬件检查 Pending 位并补发；这正是“Mask ≠ 丢弃”的含义',
+      status: n ? 'ok' : 'idle',
     });
   });
   sendMsix(186 * US, 3);

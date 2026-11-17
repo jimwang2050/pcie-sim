@@ -39,53 +39,64 @@ export function buildMemRead(sim, opts = {}) {
 
   tlpPair(sim, t0, 'RC', 'EP', req,
     `MRd  Addr=${hex32(MEM_ADDR)}  Len=32DW  Tag=${tag}`,
-    'Non-Posted：消耗 NP_Hdr 1；Tag 用于匹配 Completion',
-    () => sim.fc.consume('RC', 'NP_Hdr', 1));
+    'Non-Posted：原子扣减 NP_Hdr 1；Tag 用于匹配 Completion',
+    () => {
+      sim.fc.reserve('RC', { NP_Hdr: 1 });
+      sim.tx.begin({ requester: RC_ID, tag, kind: 'MRd', lengthBytes: 128, at: sim.clock });
+    });
   ackPair(sim, t0 + 4 * US, 'EP', 'RC', `MRd Tag=${tag}`);
+
+  /** 请求方收到 Completion：按 Byte Count 累计，归零才算事务完成。 */
+  function matchCompletion(t, pkt, label) {
+    sim.at(t, () => {
+      const r = sim.tx.complete({
+        requester: RC_ID, tag: pkt.tag, byteCount: pkt.byteCount,
+        dataBytes: pkt.dataBytes.length, lowerAddress: pkt.lowerAddress,
+      });
+      sim.emit({
+        layer: 'STATE', row: 'STATE', type: 'TXMATCH',
+        summary: r.ok
+          ? `${label} 匹配 Tag ${pkt.tag}：剩余 ${r.done ? 0 : r.tx.remaining}B${r.done ? '（事务完成）' : ''}`
+          : `${label} 无匹配请求（Tag ${pkt.tag}）`,
+        detail: '链路 Ack 只表示 DLL 收到，Completion 才结束事务；Byte Count 为“含本包在内仍需完成”的字节数',
+        status: r.ok ? 'ok' : 'error',
+      });
+    });
+  }
 
   tlpPair(sim, t0 + 10 * US, 'EP', 'RC', cpl1,
     `CplD  ByteCount=128  Tag=${tag}  Data[0]=${hex32(dws[0])}`,
-    '第 1 个 64B Completion（RCB=64B）；消耗 Cpl_Hdr 1 + Cpl_Data 4',
-    () => {
-      sim.fc.consume('EP', 'Cpl_Hdr', 1);
-      sim.fc.consume('EP', 'Cpl_Data', 4);
-    });
+    '第 1 个 64B Completion（RCB=64B）；原子扣减 Cpl_Hdr 1 + Cpl_Data 4',
+    () => sim.fc.reserve('EP', { Cpl_Hdr: 1, Cpl_Data: 4 }));
+  matchCompletion(t0 + 12 * US, cpl1, '第 1 个 Completion');
   ackPair(sim, t0 + 14 * US, 'RC', 'EP', `CplD Tag=${tag}`);
   dllpPair(sim, t0 + 18 * US, 'RC', 'EP',
     buildFcDllp('UpdateFC', [{ cls: 'Cpl', hdr: 1, data: 4 }]),
     'UpdateFC（归还 Cpl 信用）',
     'RC 释放 Completion 缓冲区，归还 Cpl_Hdr 1 / Cpl_Data 4',
-    () => {
-      sim.fc.give('EP', 'Cpl_Hdr', 1);
-      sim.fc.give('EP', 'Cpl_Data', 4);
-    });
+    () => sim.fc.release('EP', { Cpl_Hdr: 1, Cpl_Data: 4 }));
 
   tlpPair(sim, t0 + 26 * US, 'EP', 'RC', cpl2,
     `CplD  ByteCount=64  Tag=${tag}  Data[0]=${hex32(dws[16])}`,
     '第 2 个 64B Completion，Lower Address=0x40',
-    () => {
-      sim.fc.consume('EP', 'Cpl_Hdr', 1);
-      sim.fc.consume('EP', 'Cpl_Data', 4);
-    });
+    () => sim.fc.reserve('EP', { Cpl_Hdr: 1, Cpl_Data: 4 }));
+  matchCompletion(t0 + 28 * US, cpl2, '第 2 个 Completion');
   ackPair(sim, t0 + 30 * US, 'RC', 'EP', `CplD Tag=${tag}`);
   dllpPair(sim, t0 + 34 * US, 'RC', 'EP',
     buildFcDllp('UpdateFC', [{ cls: 'Cpl', hdr: 1, data: 4 }]),
     'UpdateFC（归还 Cpl 信用）', '',
-    () => {
-      sim.fc.give('EP', 'Cpl_Hdr', 1);
-      sim.fc.give('EP', 'Cpl_Data', 4);
-    });
+    () => sim.fc.release('EP', { Cpl_Hdr: 1, Cpl_Data: 4 }));
   dllpPair(sim, t0 + 42 * US, 'EP', 'RC',
     buildFcDllp('UpdateFC', [{ cls: 'NP', hdr: 1, data: 0 }]),
     'UpdateFC（归还 NP_Hdr）',
     'EP 处理完 MRd，归还 NP_Hdr 1',
-    () => sim.fc.give('RC', 'NP_Hdr', 1));
+    () => sim.fc.release('RC', { NP_Hdr: 1 }));
 
   sim.at(t0 + 52 * US, () => {
     sim.emit({
       layer: 'STATE', row: 'STATE', type: 'DONE',
       summary: '内存读完成：2 个 CplD，Tag 1 匹配，信用已归还',
-      detail: '128B 数据来自 EP 内存 0x1000；RCB=64B 决定 Completion 拆分粒度',
+      detail: `事务跟踪：${sim.tx.stats.completed} 个完成、${sim.tx.stats.unexpected} 个无匹配、${sim.tx.pending} 个未完成`,
       status: 'ok',
     });
     sim.endPhase();

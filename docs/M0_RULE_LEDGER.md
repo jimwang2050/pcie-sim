@@ -1,4 +1,4 @@
-# M0–M1 规则、代码与验证登记
+# M0–M2 规则、代码与验证登记
 
 资料版本及实际阅读文件 SHA-256 见 [M0_BASELINE.json](M0_BASELINE.json)。基线应用提交为 `0de9a3c`；原有 50 项测试通过。旧的 [audit-results.json](audit-results.json) 保留为改造前证据，新结果另存，未覆盖旧记录。
 
@@ -16,6 +16,13 @@
 | MODE-01 | 6.2 §3.4.1、§3.6.2.3；产品场景范围 | `registry.js`、13 个 builder、`main.js` | `scenarios.test.js` 的 1170 配置路径；浏览器自动收敛/恢复 | FM 可有 DLLP；依据承载/能力区分，不禁止 FM InitFC 概念 |
 | SIM-01 | 项目回放契约 | `sim.js`、`flit_gen6.js` | 13 场景逐步完整状态比较；22→40µs 局部重放 | 只保证保留的最多 200 步；调度闭包不作为可导出格式 |
 | SIM-02 | 项目时钟契约 | `scheduler.js`、`sim.js` | 过去/非有限时间、稳定顺序、零延迟循环上限 | 明确 `stopReason`；不声称覆盖所有协议超时 |
+| FC-01 | 6.2 §2.7.2、§3.3；项目 VC0 子集 | `js/core/fc.js`、`mem_common.js`、`mem_read.js`、`mem_write.js` | 原子准入、归还上限、超额归还、阻塞且不产生 TLP | 只用 VC0 与 6 类信用（Data 16B）；Dedicated/Shared 发送策略、Scaled FC、多 VC 未实现 |
+| TX-01 | 6.2 §2.2.9.1、§2.3.1.1 | `js/core/transactions.js`、`sim.js`、`mem_read.js`、`mem_write.js` | Tag 冲突、分包累计、无匹配 Tag、超时与快照回退 | 单 VC、8 位 Tag；不做 PASID、Completion Timeout 计时器 |
+| BERT-01 | 产品统计策略（非合规门限） | `js/core/bert.js`、`loopback_bert.js`、`panels.js`、`main.js` | 零样本/未锁定/样本不足/置信上界/代际目标单测 | 零错误用单侧 95% 上界，非零错误用正态近似；Gen6 FBER 1e-6 与 Gen1–5 BER 1e-12 为教学取值 |
+| MSI-01 | 6.2 §6.1.6、§6.1.7 概念子集 | `js/core/msi.js`、`msi_int.js` | Pending、解除屏蔽补发、Function Mask 测试 | MSI 无 Pending；不实现向量范围校验与地址匹配细节 |
+| AER-01 | 6.2 §6.2 概念子集 | `js/core/aer.js`、`aer_error.js` | Mask 抑制消息但仍计数、Severity 重映射测试 | 不实现完整 AER 寄存器组与消息路由 |
+| DPC-01 | 6.2 §6.2.11 概念子集 | `js/core/dpc.js`、`dpc_rpio.js` | Posted 不合成 Completion、读请求 UR Completion 测试 | 不模拟具体 DPC 寄存器位；Egress Control 只做丢弃计数 |
+| ATS-01 | 6.2 §10.2 概念子集 | `js/core/ats.js` | 失效后条目不再命中的测试 | 不做 PASID 与完整页表 |
 
 ## 黄金向量生成与核验
 
@@ -33,11 +40,12 @@ python3 scripts/check-reference-vectors.py ../cocotbext-pcie-master
 
 | 项目 | 当前状态 | 后续范围 |
 | --- | --- | --- |
-| Header/Data 信用原子准入及耗尽阻塞 | 尚未修复；示例只做扣数/归还 | M2 / WP05 |
-| BERT 零采样 PASS、置信区间 | 尚未修复；能力说明明确待校准 | M2 / WP07 |
-| MSI-X Pending、AER Mask/Severity、DPC 清除/Posted、ATS/PRI 完整性 | 当前仍为示意子集，未逐项升级 | M2 / WP08 |
-| PHY/训练真实时序、OS/PIPE 精细模型 | 保留教学简化 | M2 说明校准；完整电气模型不在默认范围 |
+| Header/Data 信用原子准入及耗尽阻塞 | 已实现 VC0 原子准入、阻塞与归还上限（M2 / FC-01） | 多 VC、Scaled FC、真实信用回绕 |
+| BERT 零采样 PASS、置信区间 | 已实现判定门槛与 95% 单侧上界（M2 / BERT-01） | 真实 PRBS 发生器与电气测量不在范围 |
+| MSI-X Pending、AER Mask/Severity、DPC 清除/Posted | Pending/补发、Mask/Severity、RP PIO Posted 已实现（M2） | 完整 AER 寄存器组、DPC 具体寄存器位仍未实现 |
+| ATS/PRI 完整性 | 失效后不再命中已有测试（M2 / ATS-01） | PASID、完整页表与 PRI 流控未实现 |
+| PHY/训练真实时序、OS/PIPE 精细模型 | 保留教学简化 | 完整电气模型不在默认范围 |
 | FM TLP/DLP、跨 Flit、真实 CRC/FEC | 尚未实现，字节与校验有示意标识 | 可选 M5 / WP12，需附录 J/K 等前置 |
-| Firefox/WebKit、窄屏完整验收、发布闸门/回滚 | 本轮仅本机 Chrome 冒烟和最小 CI 配置 | M3–M4 |
+| Firefox/WebKit、窄屏完整验收、发布闸门/回滚 | 仅本机 Chrome 冒烟与最小 CI | M3–M4 |
 
-这份清单与当前探针仍能观察到的 M2 缺陷一致；本轮不把未授权的后续升级标成已完成。
+这份清单与当前探针能观察到的问题一致；M2 完成项按 WP05/WP07/WP08 的实际实现登记，未授权的后续升级仍标为未实现。

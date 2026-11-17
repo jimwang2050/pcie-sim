@@ -121,7 +121,7 @@ export function buildDpcRpio(sim, opts = {}) {
     });
   });
   sim.at(100 * US, () => {
-    dpc.urCompletion();
+    dpc.urCompletion('mem-read');
     sim.emit({
       layer: 'TL', row: 'RC.TL', side: 'RC', dir: 'TX', type: 'Cpl',
       summary: 'RP PIO → UR Completion（Tag 3，Status=UR，读数据全 1）',
@@ -131,25 +131,43 @@ export function buildDpcRpio(sim, opts = {}) {
       status: 'error',
     });
   });
+  sim.at(106 * US, () => {
+    const posted = buildMem({
+      write: true, address: ADDR, is64: true, lengthDw: 4, requester: RC_ID, tag: 0,
+      dataDws: [0xaaaaaaaa, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd],
+    });
+    dpc.block();
+    const synthesized = dpc.urCompletion('posted');
+    sim.emit({
+      layer: 'TL', row: 'RC.TL', side: 'RC', dir: 'TX', type: 'DPC',
+      summary: 'Posted MWr 被丢弃：不生成 Completion',
+      detail: synthesized
+        ? '异常：Posted 请求不应被合成 Completion'
+        : 'Posted 请求本身没有 Completion，RP PIO 不能补 UR；请求方只能通过 DPC/AER 状态得知被丢弃',
+      packet: posted,
+      dur_ns: 4 * US,
+      status: 'error',
+    });
+  });
   sim.at(110 * US, () => {
     sim.emit({
       layer: 'STATE', row: 'STATE', type: 'DONE',
-      summary: 'Containment 生效：下游流量被隔离，请求方收到 UR',
-      detail: `已阻止 ${dpc.blocked} 条 TLP，生成 ${dpc.urCompletions} 条 UR Completion`,
+      summary: 'Containment 生效：下游流量被隔离，Non-Posted 收到 UR、Posted 被丢弃',
+      detail: `已阻止 ${dpc.blocked} 条 TLP，生成 ${dpc.urCompletions} 条 UR Completion，丢弃 ${dpc.postedDropped} 条 Posted`,
       status: 'ok',
     });
   });
 
   // ---------- 软件恢复 ----------
   sim.at(122 * US, () => sim.beginPhase('dpc_recover', '软件清除 DPC 并恢复链路', 'recovery',
-    '写 DPC Control.Trigger=0 → Hot Reset → 重新训练到 L0'));
+    '清除 DPC 触发状态 → Hot Reset → 重新训练到 L0'));
   sim.at(126 * US, () => {
     dpc.clear();
     dpc.state = 'recovering';
     sim.emit({
       layer: 'STATE', row: 'STATE', type: 'DPC',
-      summary: '软件写 DPC Control.Trigger=0，清除 DPC',
-      detail: '读取 DPC Status 记录触发原因后清除，准备复位链路',
+      summary: '软件清除 DPC 触发状态',
+      detail: '读取 DPC Status 记录触发原因后清除（本模型只记录行为，不模拟具体寄存器位），准备复位链路',
       status: 'ok',
     });
   });

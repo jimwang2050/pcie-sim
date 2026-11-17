@@ -34,6 +34,9 @@ export class FlowControl {
     this.initDone = false;
     this.limits = { RC: {}, EP: {} };
     this.available = { RC: {}, EP: {} };
+    this.blocked = { RC: 0, EP: 0 };
+    this.overReturned = { RC: 0, EP: 0 };
+    this.lastBlock = null;
   }
 
   init({ header = 8, data = 32, cplData = 64 } = {}) {
@@ -49,20 +52,62 @@ export class FlowControl {
     this.initDone = false;
   }
 
-  /** 发送端消耗信用（side = 发送方）。 */
-  consume(side, cls, n = 1) {
+  /** 检查一组信用能否原子满足；不改变状态。 */
+  canSend(side, need = {}) {
     const a = this.available[side];
-    if (!a) return 0;
-    a[cls] = Math.max(0, (a[cls] || 0) - n);
-    return a[cls];
+    if (!a) return false;
+    return Object.entries(need).every(([cls, n]) => !(n > 0) || (a[cls] || 0) >= n);
   }
 
-  /** 接收端通过 UpdateFC 归还信用（side = 发送方）。 */
-  give(side, cls, n = 1) {
+  /**
+   * Header/Data 原子准入：要么全部扣减，要么一条都不扣。
+   * 信用不足时不产生 TLP（由调用方决定阻塞/重试），也不出现负信用。
+   */
+  reserve(side, need = {}) {
     const a = this.available[side];
-    if (!a) return 0;
-    a[cls] = Math.min(this.limits[side][cls], (a[cls] || 0) + n);
-    return a[cls];
+    if (!a) return { ok: false, missing: ['unknown'] };
+    const missing = Object.entries(need)
+      .filter(([cls, n]) => n > 0 && (a[cls] || 0) < n)
+      .map(([cls]) => cls);
+    if (missing.length) {
+      this.blocked[side] = (this.blocked[side] || 0) + 1;
+      this.lastBlock = { side, missing, need: { ...need } };
+      return { ok: false, missing };
+    }
+    for (const [cls, n] of Object.entries(need)) if (n > 0) a[cls] -= n;
+    return { ok: true, missing: [] };
+  }
+
+  /** 归还信用：不超过通告上限；超出部分单独计数，重复归还因此可见。 */
+  release(side, credits = {}) {
+    const a = this.available[side];
+    const limit = this.limits[side];
+    if (!a || !limit) return { ok: false, over: {} };
+    const over = {};
+    for (const [cls, n] of Object.entries(credits)) {
+      if (!(n > 0)) continue;
+      const next = (a[cls] || 0) + n;
+      if (next > limit[cls]) {
+        over[cls] = next - limit[cls];
+        a[cls] = limit[cls];
+      } else {
+        a[cls] = next;
+      }
+    }
+    if (Object.keys(over).length) this.overReturned[side] = (this.overReturned[side] || 0) + 1;
+    return { ok: true, over };
+  }
+
+  /** 单类信用扣减（旧接口）：扣减失败时保持原值并计入阻塞。 */
+  consume(side, cls, n = 1) {
+    this.reserve(side, { [cls]: n });
+    return this.available[side] ? (this.available[side][cls] || 0) : 0;
+  }
+
+  /** 单类信用归还（旧接口）。 */
+  give(side, cls, n = 1) {
+    this.release(side, { [cls]: n });
+    return this.available[side] ? (this.available[side][cls] || 0) : 0;
   }
 
   static dataCredits(bytes) {
@@ -75,6 +120,9 @@ export class FlowControl {
       initDone: this.initDone,
       limits: JSON.parse(JSON.stringify(this.limits)),
       available: JSON.parse(JSON.stringify(this.available)),
+      blocked: { ...this.blocked },
+      overReturned: { ...this.overReturned },
+      lastBlock: this.lastBlock ? { ...this.lastBlock, missing: [...this.lastBlock.missing], need: { ...this.lastBlock.need } } : null,
     };
   }
 }

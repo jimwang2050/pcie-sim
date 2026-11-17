@@ -72,13 +72,15 @@ export function buildLoopbackBert(sim, opts = {}) {
 
   function bertText(label) {
     const s = bert.snapshot();
-    const ber = s.errors === 0 ? '0' : s.ber.toExponential(1);
-    return `BERT ${s.pattern}（${label}）：${formatBits(s.bits)}，${s.errors} errors，BER ${ber}（${s.pass ? 'PASS' : 'FAIL'}）`;
+    const observed = s.errors === 0 ? '0' : s.ber.toExponential(1);
+    const upper = Number.isFinite(s.berUpper) ? s.berUpper.toExponential(1) : '—';
+    return `BERT ${s.pattern}（${label}）：${formatBits(s.bits)}，${s.errors} errors，`
+      + `观测 BER ${observed}，95% 上界 ${upper}，目标 ${s.targetBer.toExponential(0)} → ${s.verdict}`;
   }
 
   function bertPhase(startT, label, errorDetail) {
-    at(startT, () => sim.beginPhase('bert', 'BERT 误码注入与判定', 'bert',
-      '注入比特错误，BER 超过目标后 FAIL；清除计数重新测量恢复 PASS'));
+    at(startT, () => sim.beginPhase('bert', 'BERT 判定与样本量', 'bert',
+      '只有“已锁定 + 样本量足够 + 置信上界 ≤ 目标”才判 PASS；零样本、未锁定、样本不足都不 PASS'));
     ev(startT + 4 * US, 'RC', 'BERTERR',
       `注入 3 个比特错误（${label}）`, errorDetail,
       () => {
@@ -86,12 +88,13 @@ export function buildLoopbackBert(sim, opts = {}) {
         lpbk.addErrors(3);
       });
     ev(startT + 16 * US, 'RC', 'BERT', () => bertText(label),
-      '错误累计后 BER 超过 1e-12 目标 → FAIL',
+      '错误累计后的判定见摘要：注入误码在低代际 1e-12 目标下超限，在 Gen6 的 1e-6 FBER 目标下仍可能合格',
       () => bert.accumulate(1e9, 0));
     ev(startT + 30 * US, 'RC', 'BERT', '清除 BERT 计数器，开始新一轮测量',
-      '重新测量后若窗口内无错误，则恢复 PASS', () => bert.clear());
+      '判定依据不是“有没有错误”，而是统计上界是否低于目标', () => bert.clear());
     ev(startT + 42 * US, 'RC', 'BERT', () => bertText(label),
-      '新一轮测量窗口：无错误 → PASS', () => bert.accumulate(1e9, 0));
+      () => `零错误累计到约 ${formatBits(bert.bitsNeeded)} 才能达到 95% 置信度（目标 ${bert.targetBer.toExponential(0)}）`,
+      () => bert.accumulate(bert.bitsNeeded, 0));
   }
 
   // ================= Internal Loopback（独立测试） =================
@@ -116,15 +119,17 @@ export function buildLoopbackBert(sim, opts = {}) {
         '短序列 PRBS7 快速锁定，验证 SerDes / PLL / CDR 自身的发送与采样通路');
       lpbk.enter('internal', 'PRBS7');
       bert.start('PRBS7');
+      bert.setGen(gen);
     });
     ev(22 * US, 'RC', 'PATTERN',
       () => `BERT 启动：PRBS7（${patternInfo('PRBS7').polynomial}，周期 ${patternInfo('PRBS7').period} bit）`,
       '近端自检用短序列：锁定快，但覆盖的连 0/1 较短');
     ev(28 * US, 'RC', 'BERT', 'PRBS7 图案锁定', 'Checker 与 LFSR 同步，开始累计比特', () => bert.lock());
     ev(36 * US, 'RC', 'BERT', () => bertText('Internal'),
-      'Internal 第 1 窗口：无错误', () => bert.accumulate(1e9, 0));
+      'Internal 第 1 窗口：零错误，但样本量决定能否判 PASS（Gen1–5 目标 1e-12 需要约 3 Tb）',
+      () => bert.accumulate(1e9, 0));
     ev(44 * US, 'RC', 'BERT', () => bertText('Internal'),
-      'Internal 第 2 窗口：无错误 — 只能说明器件自身正常',
+      'Internal 第 2 窗口：继续累计；Internal 环回只能说明器件自身正常',
       () => bert.accumulate(1e9, 0));
 
     bertPhase(56 * US, 'Internal · 器件自身异常',
@@ -203,6 +208,7 @@ export function buildLoopbackBert(sim, opts = {}) {
     at(46 * US, () => {
       lpbk.enter('external', pattern);
       bert.start(pattern);
+      bert.setGen(gen);
     });
     ev(48 * US, 'RC', 'PATTERN',
       () => `BERT 启动：${pattern}（${pinfo.polynomial}，周期 ${pinfo.period} bit）`,
@@ -210,7 +216,7 @@ export function buildLoopbackBert(sim, opts = {}) {
     ev(54 * US, 'RC', 'BERT', () => `${pattern} 图案锁定`,
       'Checker 与 LFSR 同步，开始累计比特', () => bert.lock());
     ev(62 * US, 'RC', 'BERT', () => bertText('External'),
-      'External 第 1 窗口：无错误（通道损耗 12 dB 仍在裕量内）',
+      'External 第 1 窗口：零错误（通道损耗 12 dB 仍在裕量内），样本量是否足够见判定',
       () => bert.accumulate(1e9, 0));
     ev(72 * US, 'RC', 'BERT', () => bertText('External'),
       'External 第 2 窗口：继续累计', () => bert.accumulate(1e9, 0));

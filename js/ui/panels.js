@@ -155,8 +155,9 @@ export function renderPhy(el, sim, collapsed = false) {
     const lb = sim.loopback ? sim.loopback.snapshot() : null;
     if (lb && lb.mode !== 'none') rows.push(['Loopback', loopbackLabel(lb.mode, lb.channelLossDb)]);
     rows.push(['BERT', `${b.pattern} · ${b.locked ? 'LOCK' : '未锁定'}`, b.locked ? '' : 'bad']);
-    rows.push(['BERT BER', `${b.errors} err / ${formatBits(b.bits)} · ${b.pass ? 'PASS' : 'FAIL'}`,
-      b.pass ? 'good' : 'bad']);
+    const upper = Number.isFinite(b.berUpper) ? b.berUpper.toExponential(1) : '—';
+    rows.push(['BERT 判定', `${b.errors} err / ${formatBits(b.bits)} · 95% 上界 ${upper} · ${b.verdict}`,
+      b.verdict === 'PASS' ? 'good' : 'bad']);
   }
   const shown = collapsed ? rows.slice(0, 4) : rows;
   const eye = collapsed
@@ -175,13 +176,15 @@ export function renderIrq(el, sim) {
     ['MSI', m.msiEnabled ? `使能 · ${m.vectorCount} vec` : '关闭'],
     ['MSI-X', m.msixEnabled ? `使能 · ${m.msixTable.length} 项` : '关闭'],
     ['最近向量', m.lastVector === null ? '-' : `#${m.lastVector}`],
-    ['中断', `${m.interrupts.length} 次 · 屏蔽 ${m.suppressed}`],
-    ['AER', a.enabled ? `C ${a.correctable} / NF ${a.nonfatal} / F ${a.fatal}` : '关闭'],
+    ['中断', `${m.interrupts.length} 次 · 屏蔽/待补发 ${m.suppressed}`],
+    ['MSI-X Pending', `${m.pending} 项${m.pendingDelivered ? ` · 已补发 ${m.pendingDelivered}` : '（解除屏蔽后补发）'}`],
+    ['AER', a.enabled ? `C ${a.correctable} / NF ${a.nonfatal} / F ${a.fatal} · 消息 ${a.messages}` : '关闭'],
+    ['AER Mask', `${a.masked} 条消息被抑制（错误仍计数）`],
     ['最近错误', a.log.length ? a.log[a.log.length - 1].message : '-'],
   ];
   if (d.enabled) {
     rows.push(['DPC', `${d.state}${d.reason ? ` · ${d.reason}` : ''}`]);
-    rows.push(['RP PIO', `${d.urCompletions} UR · 阻止 ${d.blocked} TLP`]);
+    rows.push(['RP PIO', `${d.urCompletions} UR · Posted 丢弃 ${d.postedDropped} · 阻止 ${d.blocked} TLP`]);
   }
   el.innerHTML = `<dl class="kv phy-kv">${rows.map(([k, v]) => (
     `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`

@@ -1099,9 +1099,11 @@ function openBert() {
     ['锁定', b.locked ? '已锁定' : '未锁定'],
     ['累计比特', formatBits(b.bits)],
     ['错误数', String(b.errors)],
-    ['BER', b.errors === 0 ? '0' : b.ber.toExponential(2)],
-    ['目标 BER', b.targetBer.toExponential(0)],
-    ['结果', b.pass ? 'PASS' : 'FAIL'],
+    ['观测 BER', b.errors === 0 ? '0' : b.ber.toExponential(2)],
+    ['统计上界（95%）', Number.isFinite(b.berUpper) ? b.berUpper.toExponential(2) : '—'],
+    ['目标', `${b.targetBer.toExponential(0)}${b.gen >= 6 ? '（PAM4 FBER）' : '（NRZ BER）'}`],
+    ['所需采样', `${formatBits(b.bitsNeeded)}（零错误、95% 置信）`],
+    ['判定', b.verdict],
   ].map(([k, v]) => `<div><dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd></div>`).join('');
 
   const patternRows = BERT_PATTERN_ORDER.map((n) => {
@@ -1145,7 +1147,7 @@ function openBert() {
       </table>
     </div>
     <p class="hint">注入记录：${escHtml(injText)}</p>
-    <p class="hint">PRBS 图案由 LFSR 生成；BER = 错误数 / 累计比特。目标 BER 1e-12。</p>`;
+    <p class="hint">判定规则：未锁定 / 零样本 / 样本不足都不判 PASS。零错误时用单侧 95% 上界 1−(1−0.95)^(1/n)；非零错误用正态近似上界。Gen6 为 PAM4，按 FBER 1e-6 判定；Gen1–5 按 BER 1e-12。</p>`;
   modal.hidden = false;
 }
 
@@ -1157,10 +1159,10 @@ function openIrq() {
 
   const kv = [
     ['MSI', m.msiEnabled ? `使能 · ${m.vectorCount} 向量 · 地址 0x${m.msiAddress.toString(16).toUpperCase()}` : '关闭'],
-    ['MSI-X', m.msixEnabled ? `使能 · ${m.msixTable.length} 表项` : '关闭'],
+    ['MSI-X', m.msixEnabled ? `使能 · ${m.msixTable.length} 表项${m.msixFunctionMask ? ' · Function Mask' : ''}` : '关闭'],
     ['中断次数', String(m.interrupts.length)],
-    ['被屏蔽', String(m.suppressed)],
-    ['AER', a.enabled ? '使能' : '关闭'],
+    ['被屏蔽/待补发', `${m.suppressed} 次 · Pending ${m.pending} 项 · 已补发 ${m.pendingDelivered}`],
+    ['AER', a.enabled ? `使能 · 消息 ${a.messages} · 被 Mask ${a.masked}` : '关闭'],
   ].map(([k, v]) => `<div><dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd></div>`).join('');
 
   const msixRows = m.msixTable.map((e) => `<tr>
@@ -1168,19 +1170,22 @@ function openIrq() {
     <td>0x${e.address.toString(16).toUpperCase()}</td>
     <td>0x${e.data.toString(16).toUpperCase()}</td>
     <td>${e.masked ? 'mask' : '使能'}</td>
+    <td>${e.pending ? 'Pending' : '-'}</td>
   </tr>`).join('');
 
   const aerRows = a.log.length
-    ? a.log.map((r, i) => `<tr><td>${i + 1}</td><td>${escHtml(r.severity)}</td><td>${escHtml(r.message)}</td></tr>`).join('')
-    : '<tr><td colspan="3">暂无错误</td></tr>';
+    ? a.log.map((r, i) => `<tr><td>${i + 1}</td><td>${escHtml(r.severity)}</td>
+        <td>${escHtml(r.reported === false ? `未发消息（${r.reason || 'masked'}）` : `消息 ${escHtml(r.effective || r.severity)}`)}</td>
+        <td>${escHtml(r.message)}</td></tr>`).join('')
+    : '<tr><td colspan="4">暂无错误</td></tr>';
 
   modalBody.innerHTML = `<dl class="kv">${kv}</dl>
     <div class="insp-section">
       <h3>MSI-X 表</h3>
       <div class="table-scroll">
         <table class="symbols">
-          <colgroup><col style="width:44px"><col><col><col style="width:64px"></colgroup>
-          <thead><tr><th>#</th><th>Message Address</th><th>Message Data</th><th>Mask</th></tr></thead>
+          <colgroup><col style="width:44px"><col><col><col style="width:64px"><col style="width:84px"></colgroup>
+          <thead><tr><th>#</th><th>Message Address</th><th>Message Data</th><th>Mask</th><th>Pending</th></tr></thead>
           <tbody>${msixRows}</tbody>
         </table>
       </div>
@@ -1189,13 +1194,13 @@ function openIrq() {
       <h3>AER 错误日志</h3>
       <div class="table-scroll">
         <table class="symbols">
-          <colgroup><col style="width:44px"><col style="width:90px"><col></colgroup>
-          <thead><tr><th>#</th><th>严重度</th><th>错误</th></tr></thead>
+          <colgroup><col style="width:44px"><col style="width:90px"><col style="width:150px"><col></colgroup>
+          <thead><tr><th>#</th><th>检出的严重度</th><th>消息</th><th>说明</th></tr></thead>
           <tbody>${aerRows}</tbody>
         </table>
       </div>
     </div>
-    <p class="hint">Correctable 通过 ERR_COR 上报；Uncorrectable 分为 Non-Fatal（ERR_NONFATAL）与 Fatal（ERR_FATAL）。</p>`;
+    <p class="hint">检出即记录 Status；Mask 只抑制错误消息（ERR_COR / ERR_NONFATAL / ERR_FATAL），不表示错误没发生。Severity 可把 Uncorrectable 错误改按 Fatal 上报。</p>`;
   modal.hidden = false;
 }
 

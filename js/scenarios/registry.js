@@ -6,16 +6,16 @@ const nfm = [1, 2, 3, 4, 5];
 const entries = {
   link_training: [all, ['nonflit', 'flit'], 'schematic', '训练/Flit 为教学示意，未实现真实 FM 编码'],
   phy_link: [all, ['auto'], 'schematic', 'PHY 为近似模型；模式按速率自动选择'],
-  loopback_bert: [all, ['auto'], 'schematic', '环回为预设行为；统计校准计划在 M2'],
+  loopback_bert: [all, ['auto'], 'schematic', '环回为预设行为；BERT 判定含 95% 置信上界'],
   flit_gen6: [[6], ['flit'], 'schematic', '256B 布局与故障结果示意，不执行标准 CRC/FEC'],
   enumeration: [nfm, ['nonflit'], 'field-model', '本场景暂仅实现 Non-Flit；FM 事务尚未实现'],
-  mem_read: [nfm, ['nonflit'], 'behavior-subset', '本场景暂仅实现 Non-Flit；信用耗尽阻塞计划在 M2'],
-  mem_write: [nfm, ['nonflit'], 'behavior-subset', '本场景暂仅实现 Non-Flit；信用耗尽阻塞计划在 M2'],
+  mem_read: [nfm, ['nonflit'], 'behavior-subset', '本场景暂仅实现 Non-Flit；VC0 信用准入与 Tag 匹配已实现'],
+  mem_write: [nfm, ['nonflit'], 'behavior-subset', '本场景暂仅实现 Non-Flit；信用耗尽阻塞与重发已实现'],
   ltssm_pm: [nfm, ['nonflit'], 'schematic', '本场景包含 L0s；FM 电源流程尚未实现'],
   pm_dp: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit PM 示意'],
-  msi_int: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit 中断示意'],
-  aer_error: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit 错误示意'],
-  dpc_rpio: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit DPC 示意'],
+  msi_int: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit；MSI-X Pending 与补发已实现'],
+  aer_error: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit；Mask 抑制消息但仍计数'],
+  dpc_rpio: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit；RP PIO 按请求类型处理'],
   ats: [nfm, ['nonflit'], 'schematic', '本场景暂仅实现 Non-Flit ATS/PRI 示意'],
 };
 export const SCENARIOS = Object.freeze(Object.fromEntries(Object.entries(entries).map(([key, [gens, modes, fidelity, note]]) => [

@@ -28,7 +28,8 @@ export function setupLinkL0(sim, gen, width, rows) {
   sim.rows = rows;
 }
 
-export function setupMemScenario(sim, gen, width) {
+export function setupMemScenario(sim, gen, width, credits = {}) {
+  const { header = 8, data = 32, cplData = 64 } = credits;
   const link = sim.link;
   link.configure({ gen, width, mode: 'auto' });
   link.reset();
@@ -44,7 +45,8 @@ export function setupMemScenario(sim, gen, width) {
   sim.phy.setEqPhase(gen >= 3 ? 3 : 0, gen >= 3 ? sim.phy.bestPreset() : 0);
 
   sim.fc.reset();
-  sim.fc.init({ header: 8, data: 32, cplData: 64 });
+  sim.fc.init({ header, data, cplData });
+  sim.tx.reset();
   sim.mem.reset();
 
   sim.rows = [

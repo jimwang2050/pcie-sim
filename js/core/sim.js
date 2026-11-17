@@ -8,6 +8,7 @@ import { ConfigSpace } from './config.js';
 import { PhyModel } from './phy.js';
 import { BertModel } from './bert.js';
 import { FlowControl } from './fc.js';
+import { Transactions } from './transactions.js';
 import { Memory } from './memory.js';
 import { MsiModel } from './msi.js';
 import { AerModel } from './aer.js';
@@ -51,6 +52,7 @@ export class Sim {
     this.phy = new PhyModel();
     this.bert = new BertModel();
     this.fc = new FlowControl();
+    this.tx = new Transactions();
     this.mem = new Memory();
     this.msi = new MsiModel();
     this.aer = new AerModel();
@@ -87,6 +89,7 @@ export class Sim {
     this.phy.reset(config.gen ?? 3, config.width ?? 8);
     this.bert.reset();
     this.fc.reset();
+    this.tx.reset();
     this.mem.reset();
     this.msi.reset();
     this.aer.reset();
@@ -154,6 +157,7 @@ export class Sim {
       }),
       bert: cloneValue({
         enabled: this.bert.enabled,
+        gen: this.bert.gen,
         pattern: this.bert.pattern,
         polynomial: this.bert.polynomial,
         locked: this.bert.locked,
@@ -161,6 +165,7 @@ export class Sim {
         errors: this.bert.errors,
         ber: this.bert.ber,
         targetBer: this.bert.targetBer,
+        confidence: this.bert.confidence,
         history: this.bert.history,
         injections: this.bert.injections,
       }),
@@ -169,11 +174,16 @@ export class Sim {
         initDone: this.fc.initDone,
         limits: this.fc.limits,
         available: this.fc.available,
+        blocked: this.fc.blocked,
+        overReturned: this.fc.overReturned,
+        lastBlock: this.fc.lastBlock,
       }),
+      tx: this.tx.snapshot(),
       memBytes: new Uint8Array(this.mem.bytes),
       msi: cloneValue({
         msiEnabled: this.msi.msiEnabled,
         msixEnabled: this.msi.msixEnabled,
+        msixFunctionMask: this.msi.msixFunctionMask,
         msiAddress: this.msi.msiAddress,
         msiData: this.msi.msiData,
         vectorCount: this.msi.vectorCount,
@@ -182,6 +192,7 @@ export class Sim {
         lastVector: this.msi.lastVector,
         interrupts: this.msi.interrupts,
         suppressed: this.msi.suppressed,
+        pendingDelivered: this.msi.pendingDelivered,
       }),
       aer: cloneValue({
         enabled: this.aer.enabled,
@@ -189,6 +200,10 @@ export class Sim {
         nonfatal: this.aer.nonfatal,
         fatal: this.aer.fatal,
         log: this.aer.log,
+        mask: this.aer.mask,
+        severity: this.aer.severity,
+        messages: this.aer.messages,
+        masked: this.aer.masked,
       }),
       pm: cloneValue({
         enabled: this.pm.enabled,
@@ -255,6 +270,7 @@ export class Sim {
     Object.assign(this.phy, cloneValue(s.phy));
     Object.assign(this.bert, cloneValue(s.bert));
     Object.assign(this.fc, cloneValue(s.fc));
+    this.tx.restore(s.tx);
     this.mem.bytes = new Uint8Array(s.memBytes);
     Object.assign(this.msi, cloneValue(s.msi));
     Object.assign(this.aer, cloneValue(s.aer));

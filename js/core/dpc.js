@@ -20,6 +20,7 @@ export class DpcModel {
     this.triggered = false;
     this.interrupts = 0;
     this.urCompletions = 0;
+    this.postedDropped = 0;
     this.blocked = 0;
   }
 
@@ -53,14 +54,22 @@ export class DpcModel {
     return this.egressControl;
   }
 
-  /** RP PIO 生成一条 UR Completion。 */
-  urCompletion() {
+  /**
+   * RP PIO 完成处理：只有 Non-Posted 请求才有可合成的 Completion。
+   * Posted 请求（MWr / Message）没有 Completion，只能被丢弃并由状态/中断告知软件，
+   * 不能像读请求那样补一条 UR Completion。
+   */
+  urCompletion(kind = 'mem-read') {
     if (!this.rpPio) return false;
+    if (kind === 'posted') {
+      this.postedDropped += 1;
+      return false;
+    }
     this.urCompletions += 1;
     return true;
   }
 
-  /** 软件写 DPC Control.Trigger = 0，清除触发状态。 */
+  /** 软件清除 DPC 触发状态（本模型只记录行为，不模拟具体寄存器位）。 */
   clear() {
     this.triggered = false;
     this.reason = '';
@@ -77,6 +86,7 @@ export class DpcModel {
       triggered: this.triggered,
       interrupts: this.interrupts,
       urCompletions: this.urCompletions,
+      postedDropped: this.postedDropped,
       blocked: this.blocked,
     };
   }

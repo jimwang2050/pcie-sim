@@ -8,16 +8,41 @@
 - 运行方式：任意静态服务器（内置 `npm run serve`）
 - 测试：Node 内置模型/协议回归 + Playwright 浏览器冒烟（开发依赖）
 
-## 0.2 升级（M0–M1）
+## M0–M1：协议准确性
 
 - NFM 请求头按协议 DWORD 顺序展示，修复 CfgRd Length、BE、Completion Byte Count；10 组独立头向量已与 cocotbext-pcie 编码器交叉核验。
 - Type 0 配置子集支持 8/16/32 位访问、字节使能、RO/RW1C、BAR 固定类型位及独立高低 DWORD 探测；64 位地址无损表示。
 - Flit 场景可局部回退重放；事件载荷不可变；界面显示最多 200 步的历史边界。
 - 13 场景统一能力表：NFM 事务场景暂限 Gen1–5；低速 FM 仅在训练示意中开放。未实现组合明确拒绝，不静默覆盖用户配置。
 - Gen6 Flit 仅是布局和显式故障结果示意；TLP/DLP 非标准 FM 编码，CRC/ECC 字节置零占位，不执行真实 CRC/FEC。
-- 流控耗尽阻塞、BERT 统计判定与高级场景校准属于 M2；完整真实 FM 编码属于可选 M5。
+- 流控耗尽阻塞、BERT 统计判定与高级场景校准已在 M2 完成，见下节；完整真实 FM 编码属于可选 M5。
 
 详见 [M0–M1 交付说明](docs/M0_M1_DELIVERY.md)。
+
+## M2：行为校准
+
+- **VC0 流控**：Header/Data 原子准入——任一信用不足则一条都不扣、不产生 TLP；归还封顶到通告上限，超额归还单独计数。「内存写」把 Data 信用降到 2（32B），可看到第 2 个 MWr 因 P_Data 耗尽而阻塞，UpdateFC 归还后只重发一次。
+- **事务跟踪**：按 Requester+Tag 跟踪未完成请求，支持 Tag 冲突、Completion 分包累计（Byte Count 含本包）、无匹配 Tag 与超时；事务状态纳入快照，逐步回退不会丢状态。
+- **BERT 判定**：不再以「零错误」直接判 PASS。未锁定 / 零样本 / 样本不足都不 PASS；零错误用单侧 95% 上界 `1−(1−0.95)^(1/n)`，非零错误用正态近似。Gen6（PAM4）按 FBER 1e-6 判定，Gen1–5 按 BER 1e-12——同样 1 Gb 零错误，Gen3 显示「样本不足」，Gen6 可以 PASS。
+- **MSI-X**：Per-vector Pending + Function Mask；屏蔽期间触发只置 Pending，解除后补发，不再当作丢弃。
+- **AER**：Mask 只抑制错误消息、不抑制错误计数；Severity 可把 Uncorrectable 错误改按 Fatal 上报，日志区分「检出级别 / 实际消息」。
+- **DPC / RP PIO**：只有 Non-Posted 请求能合成 UR Completion；Posted 请求被丢弃且不生成 Completion。
+- 测试增至 **108 项**（含 12 条 M2 行为用例），浏览器冒烟 15/15。
+
+详见 [M2 交付说明](docs/M2_DELIVERY.md) 与 [规则登记](docs/M0_RULE_LEDGER.md)。
+
+## M3：教学流程、schema 与导出
+
+- **教学导引**：顶栏「教学导引」按当前场景给出学习目标、前置知识、关键观察点、结论、简化边界与依据；13 个场景全覆盖，缺导引会被测试拦住。
+- **事件筛选**：时间轴支持按层（TL/DLL/PHY/STATE）、方向（TX/RX）、状态（正常/等待/错误）过滤，并显示「显示 x/y」，可一键清除。
+- **场景命名**：顶栏场景名与副标题去掉了 M1–M5 等内部里程碑前缀。
+- **弹窗可达性**：打开时焦点移入弹窗、关闭后归还，`Esc` 关闭，`Tab` 在弹窗内循环。
+- **事件 schema**：事件新增 `modelTimeNs`、`fidelity`、`requestId`、`causeId`；导出事件另带 `schemaVersion` 与 `eventId`。
+- **JSON 导出**：「事件日志」面板「导出」生成版本化轨迹（场景、请求/生效配置、时长、时间语义、全部事件），64 位地址以 `0x…` 字符串表示，不丢精度。
+- **URL 状态**：`#scenario=…&gen=…&width=…&mode=…` 可直接恢复场景与配置，非法键忽略；配置收敛后回写 URL，不把轨迹塞进 URL。
+- **性能基线**：`node scripts/bench.mjs` 测得 `emit` 约 1.1 µs/事件；含 200 步历史的 `step+emit` 约 50 µs/事件（现有场景均在百级事件内）。
+
+详见 [M3 交付说明](docs/M3_DELIVERY.md)。
 
 ## 快速开始
 
@@ -37,10 +62,10 @@ npm run test:browser  # 默认使用本机 Chrome；CI 使用 Playwright Chromiu
 
 ## 界面与功能
 
-- **顶栏**：场景、Gen（1–6）、Lane 宽度（x1–x16）、Flit / Non-Flit 模式、播放速度（-32× … 2×）、深色 / 浅色主题、「典型模型」菜单
+- **顶栏**：场景、Gen（1–6）、Lane 宽度（x1–x16）、Flit / Non-Flit 模式、播放速度（-32× … 2×）、教学导引、典型模型菜单、深色 / 浅色主题
 - **左列**：拓扑、链路参数、PHY 电气（眼图 / BERT）、LTSSM 状态机
-- **中列**：分层时序（时序图 / 流程视图）、事件详情
-- **右列**：配置空间、训练计数器 / Flit 统计、电源管理、中断 / 错误、ATS / PRI、事件日志、说明
+- **中列**：分层时序（时序图 / 流程视图 + 层/方向/状态筛选）、事件详情
+- **右列**：配置空间、训练计数器 / Flit 统计、电源管理、中断 / 错误、ATS / PRI、事件日志（可导出 JSON）、说明
 
 「典型模型」弹窗按 **PHY 处理模型 / 链路模式 / 事务与排序 / 电源与系统 / 可靠性与可维护性** 五组，共 10 个模型（EQ、CDR、REF CLK/PLL、眼图与链路预算、BERT、Gen 对照、Flit 对照、Ordering、PM、RAS），详见下文「典型模型」。
 
@@ -54,10 +79,10 @@ npm run test:browser  # 默认使用本机 Chrome；CI 使用 Playwright Chromiu
 | Gen6 Flit 深入 | 256B 布局与预设故障/Flit 重放示意，未实现真实 CRC/FEC |
 | Loopback / BERT | Internal / External 两套独立环回 + 多图案误码统计 |
 | 设备枚举 | CfgRd0 / CfgWr0、BAR 探测与分配、Memory Enable |
-| 内存读 / 写 | MRd → CplD、Posted MWr、信用与 UpdateFC |
-| MSI / MSI-X | 中断消息、向量与 Mask |
-| AER | ERR_COR / ERR_NONFATAL / ERR_FATAL 与 Hot Reset |
-| DPC + RP PIO | 下游端口隔离、Egress Control、UR Completion |
+| 内存读 / 写 | MRd → CplD、Posted MWr、VC0 信用原子准入、信用耗尽阻塞与 UpdateFC 归还、Tag 匹配 |
+| MSI / MSI-X | 中断消息、向量、Per-vector Mask 与 Pending / 解除屏蔽补发 |
+| AER | ERR_COR / ERR_NONFATAL / ERR_FATAL；Mask 只抑制消息、Severity 可重映射，以及 Hot Reset |
+| DPC + RP PIO | 下游端口隔离、Egress Control、Non-Posted 的 UR Completion 与 Posted 丢弃 |
 | ATS + PRI | 翻译请求、ATC 命中 / 失效、缺页与 PRG Response |
 | PM D/P 状态 | D0–D3cold、P0–P2（PIPE PowerDown）、PMCSR 与 PME |
 
@@ -71,7 +96,7 @@ npm run test:browser  # 默认使用本机 Chrome；CI 使用 Playwright Chromiu
 | CDR 时钟恢复 | 相位检测 → 环路滤波 → VCO 的闭环；UNLOCKED / FREQ_LOCK / PHASE_LOCK / BIT_LOCK 四阶段的 ppm、相位误差与抖动惩罚 | 阶段框选对应环节，展示锁定过程与采样窗口 |
 | REF CLK / PLL | 平台参考时钟（RP / EP 共用、SSC）、CLKREQ# 门控与上拉电阻、PLL 倍频产生最终 REF CLK；链路空闲的来源 | 横向信号链，展示门控开启 / 关闭时 PLL 与 REF CLK 的状态 |
 | 眼图与链路预算 | NRZ / PAM4 眼图，叠加高斯白噪声（Box–Muller）与随机抖动模拟分析仪 persistence；Gen6 PAM4 三眼紧贴、电平轨线与轮廓 | 眼图随 Gen / 均衡 / 噪声参数变化重绘 |
-| BERT 误码测试 | PRBS7/9/11/15/23/31 图案、Internal / External 两套独立环回、误码注入与 BER 统计（置信判定尚待 M2 校准） | 切换图案与环回方式，实时统计误码率 |
+| BERT 误码测试 | PRBS7/9/11/15/23/31 图案、Internal / External 两套独立环回、误码注入；按 95% 单侧上界与代际目标（Gen6 FBER / Gen1–5 BER）判定 | 切换图案与环回方式，实时统计误码率与判定结果 |
 | Gen1–6 差异对照 | 2.5–64 GT/s、8b/10b / 128b/130b / PAM4 + Flit、FEC 与均衡要求 | 表格对照各代速率、编码、调制与关键机制 |
 | Flit / Non-Flit | 256B Flit 打包、FEC + CRC、Flit 级重传 vs DLLP Ack/Nak 的差异 | 并排对照两种模式的字段与重传粒度 |
 | 排序规则（Ordering） | PCIe 6.0 Table 2-42 四类事务的超越矩阵（默认 a / 例外 b）、RO / IDO、同 TxID Completion、死锁避免；Table J-1 九条规则及其系统需求 | 矩阵按行 / 列着色；「生产-消费者」24 秒慢放演示：RC（CPU / RAM dest / RP）↔ EP（EP / Status / Manager / RAM source），P_D 可多块在途，2 次 NP_S 轮询，CPL#1（flag=0）夹在 P_D1 / P_D2 之间且不超越 P_D，最后一次 CPL#2 返回 flag=1 |
@@ -92,17 +117,19 @@ pcie-sim/
 │   │   ├── sim.js        # 离散事件调度、历史与快照
 │   │   ├── link.js       # LTSSM 端口状态与链路参数
 │   │   ├── packet.js     # 有序集 / TLP 速率与编码
-│   │   ├── tlp.js dllp.js flit.js fc.js
+│   │   ├── tlp.js dllp.js flit.js fc.js transactions.js
 │   │   ├── phy.js        # REF CLK / PLL / CDR / EQ / COM 简化模型
 │   │   ├── pm.js aer.js dpc.js ats.js hotplug.js msi.js
 │   │   ├── config.js memory.js loopback.js bert.js
 │   │   ├── event_info.js ltssm_info.js   # 事件 / 状态释义
+│   │   ├── url_state.js trace_export.js  # URL 状态 / 版本化导出
 │   │   └── playback.js   # 播放节拍
 │   ├── scenarios/        # 每个场景的脚本化事件序列
 │   └── ui/               # 渲染与视图
 │       ├── timeline.js flowview.js topology.js
-│       ├── panels.js models.js eye.js cfg_layout.js
-└── tests/link.test.js    # 原有场景测试；另有 accuracy/scenarios 回归与 fixtures
+│       ├── panels.js models.js eye.js cfg_layout.js guide.js
+├── scripts/              # 审计、参考向量比对、吞吐基准
+└── tests/                # link / accuracy / scenarios / behavior / m3 五组回归
 ```
 
 ## 参考案例与来源
@@ -167,4 +194,6 @@ pcie-sim/
 npm test
 ```
 
-覆盖有序集编解码与传输时间、链路训练与变速、Gen6 Flit 布局 / 显式故障结果 / 重传示意、TLP 与配置空间 / BAR 枚举、流控信用、内存读写、MSI / MSI-X、AER、DPC + RP PIO、ATS + PRI、PM 状态机与 PMCSR、PHY 与均衡、Loopback / BERT、单步回退、事件确定性，以及 PM 典型模型渲染片段的存在性断言。
+覆盖有序集编解码与传输时间、链路训练与变速、Gen6 Flit 布局 / 显式故障结果 / 重传示意、TLP 与配置空间 / BAR 枚举、VC0 信用原子准入与阻塞重发、Requester+Tag 事务匹配、内存读写、MSI / MSI-X（含 Pending 补发）、AER（Mask / Severity）、DPC + RP PIO（Posted 丢弃）、ATS + PRI、PM 状态机与 PMCSR、PHY 与均衡、Loopback / BERT 统计判定、单步回退、事件确定性，以及 PM 典型模型渲染片段的存在性断言。
+
+另含 M3 回归：URL 状态解析与回写、13 场景教学导引完整性、事件筛选、版本化 JSON 导出（BigInt 无损）、事件 schema 字段。浏览器冒烟覆盖 13 场景 + 配置收敛 + 教学导引 + 事件筛选 + URL 恢复。

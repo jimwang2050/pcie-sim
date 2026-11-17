@@ -1,5 +1,7 @@
 # PCIe 关键流程交互式模拟器（pcie-sim）
 
+**在线演示：<https://jimwang2050.github.io/pcie-sim/>**
+
 纯前端、零依赖的 PCIe 教学模拟器：用离散事件模型把链路训练、电源管理、TLP/DLLP 收发、错误与 RAS、PHY 均衡等流程拆成可单步、可回退、可观察的时间线，并在浏览器里用 SVG 实时绘制。
 
 - 技术栈：原生 HTML + CSS + ES Module JavaScript，无构建步骤、无第三方库
@@ -15,6 +17,8 @@ npm run serve     # python3 -m http.server 8123
 
 npm test          # node --test tests/*.test.js
 ```
+
+也可以直接访问已发布的 GitHub Pages：<https://jimwang2050.github.io/pcie-sim/>（`main` 分支根目录，纯静态、无需构建）。
 
 浏览器需支持 ES Module、SVG 与 SMIL（Chrome / Edge / Safari / Firefox 近期版本均可）。
 

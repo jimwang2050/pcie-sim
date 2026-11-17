@@ -1490,3 +1490,50 @@ kbd { font-family: var(--mono); font-size: 9px; padding: 1px 4px; border: 1px so
 }
 
 .capability-note { margin: 0; padding: 7px 16px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+
+/* ---------- 事件筛选 ---------- */
+.tl-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  flex-wrap: wrap;
+}
+.tl-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tl-filters select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.tl-filter-note { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
+.tl-filters .count { margin-left: auto; }
+
+/* ---------- 教学导引 ---------- */
+.guide-scenario {
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  background: rgba(56, 189, 248, 0.08);
+  border-radius: 4px;
+}
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.guide-section h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+.guide-section p { margin: 0; line-height: 1.7; }
+.guide-list { margin: 0; padding-left: 18px; line-height: 1.7; }
+.guide-list li { margin-bottom: 3px; }

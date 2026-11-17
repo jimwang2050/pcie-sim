@@ -1,4 +1,4 @@
-import { SCENARIOS, clampScenarioConfig, resolveScenarioConfig } from './scenarios/registry.js';
+import { SCENARIOS, WIDTHS, clampScenarioConfig, resolveScenarioConfig } from './scenarios/registry.js';
 /**
  * UI 入口：控制条、渲染调度与事件跟随逻辑。
  *
@@ -38,6 +38,9 @@ import {
 } from './ui/models.js';
 import { renderCfgLayout, renderCfgFieldDetail } from './ui/cfg_layout.js';
 import { PMCSR_BITS } from './core/pm.js';
+import { parseState, formatState } from './core/url_state.js';
+import { buildTraceDocument, stringifyTrace } from './core/trace_export.js';
+import { SCENARIO_GUIDE, GUIDE_SECTIONS } from './ui/guide.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -68,6 +71,22 @@ const btnRun = $('run');
 const modal = $('eventModal');
 const modalBody = $('modalBody');
 const elTheme = $('themeToggle');
+
+// 弹窗焦点管理：打开时记录来源并把焦点移入，关闭时还回去。
+let focusBeforeModal = null;
+
+function showModal() {
+  if (modal.hidden) focusBeforeModal = document.activeElement;
+  modal.removeAttribute('hidden');
+  const close = $('modalClose');
+  if (close) requestAnimationFrame(() => close.focus());
+}
+
+function hideModal() {
+  modal.setAttribute('hidden', '');
+  if (focusBeforeModal && typeof focusBeforeModal.focus === 'function') focusBeforeModal.focus();
+  focusBeforeModal = null;
+}
 
 // 深色 / 浅色两套主题：记在 localStorage，刷新后保持
 const THEME_KEY = 'pcie-sim-theme';
@@ -138,19 +157,19 @@ function describeChanges(changes) {
 }
 
 const SUBTITLES = {
-  link_training: 'M1 · 上电复位 → 链路训练 → L0',
+  link_training: '上电复位 → 链路训练 → L0',
   ltssm_pm: 'LTSSM 电源管理 · L0s / L1.0–1.2 / L2 唤醒 + 热插拔',
   phy_link: 'PHY 电气 · REF CLK / PLL / CDR / EQ / COM',
   loopback_bert: 'Loopback / BERT · Internal 或 External（独立配置）',
-  enumeration: 'M2 · 设备枚举（配置空间 / BAR）',
-  mem_read: 'M3 · 内存读（MRd → CplD）',
-  mem_write: 'M3 · 内存写（MWr Posted）',
-  msi_int: 'M4 · MSI / MSI-X 中断',
-  aer_error: 'M4 · AER 错误上报 + Hot Reset',
+  enumeration: '设备枚举（配置空间 / BAR）',
+  mem_read: '内存读（MRd → CplD）',
+  mem_write: '内存写（MWr Posted）',
+  msi_int: 'MSI / MSI-X 中断',
+  aer_error: 'AER 错误上报 + Hot Reset',
   dpc_rpio: 'DPC · 下游端口隔离 + RP PIO',
   ats: 'ATS · 地址翻译 / ATC 失效 / PRI 缺页',
   pm_dp: 'PM · D 状态 / P 状态',
-  flit_gen6: 'M5 · Gen6 Flit 打包 / FEC / 重传',
+  flit_gen6: 'Gen6 Flit 打包 / FEC / 重传',
 };
 
 const PANEL_VIS = {
@@ -291,6 +310,7 @@ function reset() {
   }
   const adjustNote = changes.length ? `已自动调整 ${describeChanges(changes)} · ` : '';
   const effective = resolveScenarioConfig(scenarioKey, cfg);
+  syncUrlState(cfg);
   $('capabilityNote').textContent = `${adjustNote}生效：Gen${effective.gen} x${effective.width} · ${effective.effectiveMode === 'flit' ? 'Flit' : 'Non-Flit'} · ${capability.note}`;
   btnRun.disabled = false;
   sim.reset(cfg);
@@ -304,8 +324,11 @@ function reset() {
   elPattern.disabled = scenarioKey === 'loopback_bert' && elLpbk.value === 'internal';
   $('subtitle').textContent = SUBTITLES[scenarioKey] || SUBTITLES.link_training;
   document.title = `PCIe 模拟器 · ${SUBTITLES[scenarioKey] || SUBTITLES.link_training}`;
-  // 先执行首个事件，让时间轴与自动浮窗在就绪时就有内容。
-  sim.stepOnce();
+  // 先推进到首个事件，让时间轴与自动浮窗在就绪时就有内容。
+  // 某些场景的第一个调度只是 beginPhase（不产生事件），需要多推几步。
+  for (let guard = 0; sim.events.length === 0 && sim.pending && guard < 50; guard += 1) {
+    sim.stepOnce();
+  }
   timeline.setSim(sim);
   flowView.setSim(sim, scenarioKey);
   renderAll(true);
@@ -320,7 +343,7 @@ function openModal(id) {
   } else {
     renderInspector(modalBody, sim, id);
   }
-  modal.hidden = false;
+  showModal();
 }
 
 function openCompare() {
@@ -341,7 +364,79 @@ function openCompare() {
     </tbody>
   </table>
   <p class="hint">Flit 将多个 TLP/DLLP 打包进固定 256B 单元，链路层保护与重传粒度随之变为 Flit。</p>`;
-  modal.hidden = false;
+  showModal();
+}
+
+/** 教学导引：当前场景的学习目标、前置、观察点、结论与简化边界。 */
+function openGuide() {
+  const guide = SCENARIO_GUIDE[scenarioKey];
+  modalMode = 'guide';
+  $('modalTitle').textContent = '场景教学导引';
+  if (!guide) {
+    modalBody.innerHTML = '<p class="empty">该场景暂无教学导引。</p>';
+    showModal();
+    return;
+  }
+  const block = ([key, label]) => {
+    const value = guide[key];
+    if (!value) return '';
+    const body = Array.isArray(value)
+      ? `<ul class="guide-list">${value.map((t) => `<li>${escHtml(t)}</li>`).join('')}</ul>`
+      : `<p>${escHtml(value)}</p>`;
+    return `<section class="guide-section"><h4>${escHtml(label)}</h4>${body}</section>`;
+  };
+  const current = elScenario.selectedOptions[0]
+    ? elScenario.selectedOptions[0].textContent : scenarioKey;
+  modalBody.innerHTML = `<p class="guide-scenario">${escHtml(current)}</p>
+    <div class="guide-grid">${GUIDE_SECTIONS.map(block).join('')}</div>`;
+  showModal();
+}
+
+/** 导出当前场景的版本化 JSON 轨迹（BigInt 地址转十六进制字符串）。 */
+function exportTrace() {
+  const cfg = currentConfig();
+  const effective = resolveScenarioConfig(scenarioKey, cfg);
+  const doc = buildTraceDocument({
+    scenario: scenarioKey,
+    config: cfg,
+    effective,
+    durationNs: sim.durationNs,
+    clockNs: sim.clock,
+    events: sim.events,
+  });
+  const blob = new Blob([stringifyTrace(doc)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pcie-sim-${scenarioKey}-g${cfg.gen}x${cfg.width}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** 从 URL hash 恢复场景与配置；非法值由 parseState 忽略。 */
+function applyUrlState() {
+  const state = parseState(window.location.hash, { scenarios: SCENARIOS, widths: WIDTHS });
+  if (state.scenario) {
+    scenarioKey = state.scenario;
+    elScenario.value = state.scenario;
+  }
+  if (state.gen) elGen.value = String(state.gen);
+  if (state.width) elWidth.value = String(state.width);
+  if (state.mode) elMode.value = state.mode;
+}
+
+/** 把当前（收敛后的）配置写回 URL，只保存允许的键。 */
+function syncUrlState(cfg) {
+  try {
+    const next = formatState({
+      scenario: scenarioKey, gen: cfg.gen, width: cfg.width, mode: cfg.mode,
+    });
+    if (window.location.hash !== next) window.history.replaceState(null, '', next);
+  } catch {
+    // file:// 或受限环境不支持 history 时忽略，不影响仿真
+  }
 }
 
 function openStateInfo(key) {
@@ -364,7 +459,7 @@ function openStateInfo(key) {
     ? `<section><h4>唤醒机制</h4>${list(info.wake)}</section>`
     : ''}
   </div>`;
-  modal.hidden = false;
+  showModal();
 }
 
 function renderConfigLayout() {
@@ -407,7 +502,7 @@ function openConfigDump() {
       renderConfigLayout();
     });
   });
-  modal.hidden = false;
+  showModal();
 }
 
 function modelHtml(kind) {
@@ -599,7 +694,7 @@ function openModel(kind, title) {
   renderModelBody();
   // 打开模型时回到顶部：首先看到「架构」作为首页
   modalBody.scrollTop = 0;
-  modal.hidden = false;
+  showModal();
 }
 
 function openEqModel() {
@@ -1078,7 +1173,7 @@ function openEye() {
     $('eyeRows').innerHTML = eyeRowsHtml(noisy, s, previewPam4);
   });
 
-  modal.hidden = false;
+  showModal();
 }
 
 function openBert() {
@@ -1087,7 +1182,7 @@ function openBert() {
   $('modalTitle').textContent = 'BERT 误码测试';
   if (!b.enabled) {
     modalBody.innerHTML = '<p class="empty">当前场景未启用 BERT，请选择“Loopback / BERT（误码测试）”场景。</p>';
-    modal.hidden = false;
+    showModal();
     return;
   }
   const kv = [
@@ -1148,7 +1243,7 @@ function openBert() {
     </div>
     <p class="hint">注入记录：${escHtml(injText)}</p>
     <p class="hint">判定规则：未锁定 / 零样本 / 样本不足都不判 PASS。零错误时用单侧 95% 上界 1−(1−0.95)^(1/n)；非零错误用正态近似上界。Gen6 为 PAM4，按 FBER 1e-6 判定；Gen1–5 按 BER 1e-12。</p>`;
-  modal.hidden = false;
+  showModal();
 }
 
 function openIrq() {
@@ -1201,7 +1296,7 @@ function openIrq() {
       </div>
     </div>
     <p class="hint">检出即记录 Status；Mask 只抑制错误消息（ERR_COR / ERR_NONFATAL / ERR_FATAL），不表示错误没发生。Severity 可把 Uncorrectable 错误改按 Fatal 上报。</p>`;
-  modal.hidden = false;
+  showModal();
 }
 
 function openPm() {
@@ -1311,13 +1406,13 @@ function openPm() {
     </div>
     <p class="hint">D3hot 需 PME_En=1 才能发 PME；D3cold 必须经 Fundamental Reset 才能回 D0。
       D 状态软件可见，L 状态由 D + ASPM 推导、软件通常不可见，P 状态是 PHY 的 PIPE PowerDown 编码，三者不能互相等同。</p>`;
-  modal.hidden = false;
+  showModal();
 }
 
 function closeModal(rerender = true) {
   closeArchPop();
   const wasOpen = !modal.hidden;
-  modal.hidden = true;
+  hideModal();
   modalMode = 'event';
   if (wasOpen && rerender) renderAll(false);
 }
@@ -1364,6 +1459,10 @@ function renderAll(follow = false) {
     }
   }
   timeline.render(detailId, follow, selectedRow, !running && modal.hidden && !flowMode);
+  const shown = Number($('timeline').dataset.visible);
+  const total = Number($('timeline').dataset.total);
+  $('filterCount').textContent = timeline.filterActive && Number.isFinite(shown) && Number.isFinite(total)
+    ? `显示 ${shown}/${total}` : '';
   if (flowMode) {
     flowView.setSim(sim, scenarioKey);
     flowView.render({ currentTime: sim.clock, selectedId: detailId, follow });
@@ -1483,6 +1582,32 @@ $('eyeBtn').addEventListener('click', openEye);
 $('bertBtn').addEventListener('click', openBert);
 $('irqBtn').addEventListener('click', openIrq);
 $('pmBtn').addEventListener('click', openPm);
+$('guideBtn').addEventListener('click', openGuide);
+$('exportBtn').addEventListener('click', exportTrace);
+
+// 事件筛选：层 / 方向 / 状态
+const elFilterLayer = $('filterLayer');
+const elFilterDir = $('filterDir');
+const elFilterStatus = $('filterStatus');
+
+function applyEventFilter() {
+  timeline.setFilter({
+    layer: elFilterLayer.value,
+    dir: elFilterDir.value,
+    status: elFilterStatus.value,
+  });
+  renderAll(false);
+}
+
+for (const el of [elFilterLayer, elFilterDir, elFilterStatus]) {
+  el.addEventListener('change', applyEventFilter);
+}
+$('filterClear').addEventListener('click', () => {
+  elFilterLayer.value = 'all';
+  elFilterDir.value = 'all';
+  elFilterStatus.value = 'all';
+  applyEventFilter();
+});
 
 // 典型模型菜单：PHY 处理模型 + 链路模式差异
 const modelMenu = $('modelMenu');
@@ -1602,6 +1727,24 @@ document.addEventListener('keydown', (e) => {
     closeModal();
     return;
   }
+  // 弹窗内 Tab 循环，不把焦点送到被遮挡的页面
+  if (e.key === 'Tab' && !modal.hidden) {
+    const focusable = [...modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )].filter((el) => !el.disabled && el.offsetParent !== null);
+    if (focusable.length) {
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    return;
+  }
   if (!modal.hidden) return;
   const tag = (e.target && e.target.tagName) || '';
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
@@ -1619,4 +1762,5 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+applyUrlState();
 reset();

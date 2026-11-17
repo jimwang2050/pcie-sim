@@ -129,6 +129,14 @@ function us(v) {
   return (v / 1000).toFixed(v < 10000 ? 1 : 0);
 }
 
+/** 事件筛选：层 / 方向 / 状态，'all' 表示不限。 */
+export function matchesFilter(ev, filter = {}) {
+  if (filter.layer && filter.layer !== 'all' && ev.layer !== filter.layer) return false;
+  if (filter.dir && filter.dir !== 'all' && ev.dir !== filter.dir) return false;
+  if (filter.status && filter.status !== 'all' && ev.status !== filter.status) return false;
+  return true;
+}
+
 export class Timeline {
   constructor(root, { onSelect, onSelectRow } = {}) {
     this.root = root;
@@ -143,6 +151,7 @@ export class Timeline {
     this.autoDismissed = false;
     this.onSelect = onSelect || (() => {});
     this.onSelectRow = onSelectRow || (() => {});
+    this.filter = { layer: 'all', dir: 'all', status: 'all' };
 
     root.addEventListener('click', (e) => {
       const rowNode = e.target.closest('[data-row]');
@@ -180,6 +189,14 @@ export class Timeline {
     // 新场景 / 复位后自动浮窗重新出现
     this.autoDismissed = false;
     this.hideTip();
+  }
+
+  setFilter(filter) {
+    this.filter = { ...this.filter, ...filter };
+  }
+
+  get filterActive() {
+    return this.filter.layer !== 'all' || this.filter.dir !== 'all' || this.filter.status !== 'all';
   }
 
   ensureTip() {
@@ -404,8 +421,11 @@ export class Timeline {
     });
 
     // 事件（按行分组，便于计算右侧标签的可用空间）
+    const visibleEvents = sim.events.filter((ev) => matchesFilter(ev, this.filter));
+    this.root.dataset.visible = String(visibleEvents.length);
+    this.root.dataset.total = String(sim.events.length);
     const byRow = new Map(rows.map((r) => [r.key, []]));
-    for (const ev of sim.events) {
+    for (const ev of visibleEvents) {
       const list = byRow.get(ev.row);
       if (list) list.push(ev);
     }

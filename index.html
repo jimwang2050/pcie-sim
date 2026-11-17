@@ -21,15 +21,15 @@
     <label>场景
       <select id="scenario">
         <option value="link_training">链路训练（含 Gen6 Flit）</option>
-        <option value="enumeration">设备枚举（M2）</option>
+        <option value="enumeration">设备枚举</option>
         <option value="ltssm_pm">LTSSM 电源管理（L0s/L1/L2）</option>
         <option value="phy_link">PHY 电气与均衡（CDR/EQ/COM）</option>
-        <option value="flit_gen6">Gen6 Flit 深入（M5）</option>
+        <option value="flit_gen6">Gen6 Flit 深入</option>
         <option value="loopback_bert">Loopback / BERT（Internal / External）</option>
-        <option value="mem_read">内存读 MRd → CplD（M3）</option>
-        <option value="mem_write">内存写 MWr（M3）</option>
-        <option value="msi_int">MSI / MSI-X 中断（M4）</option>
-        <option value="aer_error">AER 错误上报（M4）</option>
+        <option value="mem_read">内存读 MRd → CplD</option>
+        <option value="mem_write">内存写 MWr</option>
+        <option value="msi_int">MSI / MSI-X 中断</option>
+        <option value="aer_error">AER 错误上报</option>
         <option value="dpc_rpio">DPC + RP PIO（下游端口隔离）</option>
         <option value="ats">ATS + PRI（地址翻译 / 缺页）</option>
         <option value="pm_dp">PM D/P 状态</option>
@@ -102,6 +102,7 @@
         <button class="menu-item" data-model="ras">RAS 可靠性 / AER / DPC</button>
       </div>
     </div>
+    <button id="guideBtn" class="menu-btn">教学导引</button>
     <label>速度
       <select id="speed">
         <option value="0.03125" title="慢放 32 倍">-32×</option>
@@ -168,6 +169,35 @@
           </div>
         </div>
       </div>
+      <div class="tl-filters" id="tlFilters">
+        <span class="tl-filter-note">筛选</span>
+        <label>层
+          <select id="filterLayer">
+            <option value="all">全部</option>
+            <option value="TL">TL</option>
+            <option value="DLL">DLL</option>
+            <option value="PHY">PHY</option>
+            <option value="STATE">STATE</option>
+          </select>
+        </label>
+        <label>方向
+          <select id="filterDir">
+            <option value="all">全部</option>
+            <option value="TX">TX</option>
+            <option value="RX">RX</option>
+          </select>
+        </label>
+        <label>状态
+          <select id="filterStatus">
+            <option value="all">全部</option>
+            <option value="ok">正常</option>
+            <option value="idle">等待</option>
+            <option value="error">错误</option>
+          </select>
+        </label>
+        <button id="filterClear" class="target-chip">清除</button>
+        <span id="filterCount" class="count" aria-live="polite"></span>
+      </div>
       <div class="timeline-wrap">
         <div id="timeline"></div>
         <div id="flow" class="flowview" hidden></div>
@@ -229,7 +259,10 @@
     <section class="panel grow">
       <div class="panel-head">
         <h2>事件日志</h2>
-        <span id="logCount" class="count">0</span>
+        <div class="head-actions">
+          <span id="logCount" class="count">0</span>
+          <button id="exportBtn" class="target-chip" title="导出当前场景的版本化 JSON 轨迹">导出</button>
+        </div>
       </div>
       <ul id="log" class="log"></ul>
     </section>

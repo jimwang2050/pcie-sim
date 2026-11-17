@@ -332,9 +332,14 @@ export class Sim {
       summary: '',
       status: 'ok',
       packet: null,
+      requestId: null,
+      causeId: null,
       ...ev,
     };
     if (event.t_ns < 0) event.t_ns = 0;
+    // 模型时间是事件时间的显式别名；保真度默认跟随报文自身标注。
+    event.modelTimeNs = event.t_ns;
+    if (!event.fidelity) event.fidelity = (event.packet && event.packet.fidelity) || 'model';
     event.phase = this.currentPhase ? this.currentPhase.key : null;
     freezeValue(event.packet = cloneValue(event.packet));
     freezeValue(event);

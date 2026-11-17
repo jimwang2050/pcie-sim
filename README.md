@@ -25,7 +25,7 @@ npm test          # node --test tests/*.test.js
 - **中列**：分层时序（时序图 / 流程视图）、事件详情
 - **右列**：配置空间、训练计数器 / Flit 统计、电源管理、中断 / 错误、ATS / PRI、事件日志、说明
 
-「典型模型」弹窗包含：EQ 均衡、CDR 时钟恢复、REF CLK / PLL、眼图与链路预算、BERT、Gen1–6 差异对照、Flit / Non-Flit 差异、PCIe 排序规则（Table 2-42）、PM 电源管理（L/D/P 与唤醒）、RAS 可靠性（AER / DPC / EDR / FLR / 热插拔）。
+「典型模型」弹窗按 **PHY 处理模型 / 链路模式 / 事务与排序 / 电源与系统 / 可靠性与可维护性** 五组，共 10 个模型（EQ、CDR、REF CLK/PLL、眼图与链路预算、BERT、Gen 对照、Flit 对照、Ordering、PM、RAS），详见下文「典型模型」。
 
 ### 场景
 
@@ -43,6 +43,25 @@ npm test          # node --test tests/*.test.js
 | DPC + RP PIO | 下游端口隔离、Egress Control、UR Completion |
 | ATS + PRI | 翻译请求、ATC 命中 / 失效、缺页与 PRG Response |
 | PM D/P 状态 | D0–D3cold、P0–P2（PIPE PowerDown）、PMCSR 与 PME |
+
+## 典型模型
+
+顶栏「典型模型」菜单按「PHY 处理模型 / 链路模式 / 事务与排序 / 电源与系统 / 可靠性与可维护性」五组，每个模型都按「架构图 → 逐级运算 → 数学公式 → 动态演示 → 过程状态」组织，数值与左侧面板、当前场景共享同一套简化模型。
+
+| 模型 | 讲什么 | 动态 / 交互 |
+| --- | --- | --- |
+| EQ 均衡 | TX FFE（c₋₁/c₀/c₁）→ 信道 ISI → RX CTLE → DFE → 采样判决；每级传递函数与当前抽头、COM、眼开度 | 点架构图任一级查看公式与数值；P0–P10 预设扫描、pre/post cursor 调整阶段高亮 |
+| CDR 时钟恢复 | 相位检测 → 环路滤波 → VCO 的闭环；UNLOCKED / FREQ_LOCK / PHASE_LOCK / BIT_LOCK 四阶段的 ppm、相位误差与抖动惩罚 | 阶段框选对应环节，展示锁定过程与采样窗口 |
+| REF CLK / PLL | 平台参考时钟（RP / EP 共用、SSC）、CLKREQ# 门控与上拉电阻、PLL 倍频产生最终 REF CLK；链路空闲的来源 | 横向信号链，展示门控开启 / 关闭时 PLL 与 REF CLK 的状态 |
+| 眼图与链路预算 | NRZ / PAM4 眼图，叠加高斯白噪声（Box–Muller）与随机抖动模拟分析仪 persistence；Gen6 PAM4 三眼紧贴、电平轨线与轮廓 | 眼图随 Gen / 均衡 / 噪声参数变化重绘 |
+| BERT 误码测试 | PRBS7/9/11/15/23/31 图案、Internal / External 两套独立环回、误码注入与 BER 置信区间 | 切换图案与环回方式，实时统计误码率 |
+| Gen1–6 差异对照 | 2.5–64 GT/s、8b/10b / 128b/130b / PAM4 + Flit、FEC 与均衡要求 | 表格对照各代速率、编码、调制与关键机制 |
+| Flit / Non-Flit | 256B Flit 打包、FEC + CRC、Flit 级重传 vs DLLP Ack/Nak 的差异 | 并排对照两种模式的字段与重传粒度 |
+| 排序规则（Ordering） | PCIe 6.0 Table 2-42 四类事务的超越矩阵（默认 a / 例外 b）、RO / IDO、同 TxID Completion、死锁避免；Table J-1 九条规则及其系统需求 | 矩阵按行 / 列着色；「生产-消费者」24 秒慢放演示：RC（CPU / RAM dest / RP）↔ EP（EP / Status / Manager / RAM source），P_D 可多块在途，2 次 NP_S 轮询，CPL#1（flag=0）夹在 P_D1 / P_D2 之间且不超越 P_D，最后一次 CPL#2 返回 flag=1 |
+| PM 电源管理 | 三层语义：D（软件写 PMCSR，可见）、L（D + ASPM 推导，通常不可见）、P（PIPE PowerDown 编码）；Table 5-1 的 L 状态 × 平台资源（主电源 / REF CLK / Vaux / 唤醒方式 / 退出延迟）；L0 / L0s / L0p / L1.0–1.2 / L2 / L3 定义与唤醒路径（FTS、CLKREQ#、Beacon、WAKE#） | 按当前场景高亮链路状态；表头与首列固定、长定义自动换行；机制浮窗给出 EP / D / L / 映射的逐项定义 |
+| RAS 可靠性 | 检测（PHY / DL / TL / 链路状态）→ 分级（AER Severity / Mask 的 MUX）→ 上报（ERR_* Message → RC 转主机中断）→ 隔离（DPC / Egress Control 门控）→ 恢复（FLR / Hot Reset / 换卡）；AER / DPC / EDR / FLR / 热插拔的分工与可用性公式 | 硬件示意图区分设备内外，虚线表示软件 / ISR 路径；点分级、隔离、外部处理查看判定依据 |
+
+「配置空间」面板的 **Header Layout** 另提供 Type 0（端点）与 Type 1（桥 / 根端口）两种 32-bit word 逐行布局：点击字段查看位域、DWC 寄存器名、访问属性与复位值，BAR / Expansion ROM BAR 还给出大小探测与位域表。
 
 ## 目录结构
 

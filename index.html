@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCIe Trace · 关键流程可视化</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">PT</span>
+    <div class="brand-text">
+      <h1>PCIe Trace</h1>
+      <p id="subtitle">M1 · 上电复位 → 链路训练 → L0</p>
+    </div>
+  </div>
+  <div class="controls">
+    <label>场景
+      <select id="scenario">
+        <option value="link_training">链路训练（含 Gen6 Flit）</option>
+        <option value="enumeration">设备枚举（M2）</option>
+        <option value="ltssm_pm">LTSSM 电源管理（L0s/L1/L2）</option>
+        <option value="phy_link">PHY 电气与均衡（CDR/EQ/COM）</option>
+        <option value="flit_gen6">Gen6 Flit 深入（M5）</option>
+        <option value="loopback_bert">Loopback / BERT（Internal / External）</option>
+        <option value="mem_read">内存读 MRd → CplD（M3）</option>
+        <option value="mem_write">内存写 MWr（M3）</option>
+        <option value="msi_int">MSI / MSI-X 中断（M4）</option>
+        <option value="aer_error">AER 错误上报（M4）</option>
+        <option value="dpc_rpio">DPC + RP PIO（下游端口隔离）</option>
+        <option value="ats">ATS + PRI（地址翻译 / 缺页）</option>
+        <option value="pm_dp">PM D/P 状态</option>
+      </select>
+    </label>
+    <label>Gen
+      <select id="gen">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+    </label>
+    <label>Lane
+      <select id="width">
+        <option value="1">x1</option>
+        <option value="2">x2</option>
+        <option value="4">x4</option>
+        <option value="8" selected>x8</option>
+        <option value="16">x16</option>
+      </select>
+    </label>
+    <label>模式
+      <select id="mode">
+        <option value="auto" selected>自动</option>
+        <option value="nonflit">Non-Flit</option>
+        <option value="flit">Flit</option>
+      </select>
+    </label>
+    <label id="lpbkLabel" hidden>环回
+      <select id="lpbk">
+        <option value="internal">Internal</option>
+        <option value="external" selected>External</option>
+      </select>
+    </label>
+    <label id="patternLabel" hidden>图案
+      <select id="pattern">
+        <option value="PRBS7">PRBS7</option>
+        <option value="PRBS9">PRBS9</option>
+        <option value="PRBS11">PRBS11</option>
+        <option value="PRBS15">PRBS15</option>
+        <option value="PRBS23">PRBS23</option>
+        <option value="PRBS31" selected>PRBS31</option>
+      </select>
+    </label>
+    <span class="divider"></span>
+    <button id="reset">复位</button>
+    <button id="back">后退</button>
+    <button id="step">单步</button>
+    <button id="run" class="primary">运行</button>
+    <div class="menu" id="modelMenu">
+      <button id="modelMenuBtn" class="menu-btn" aria-haspopup="true" aria-expanded="false">典型模型 ▾</button>
+      <div id="modelMenuList" class="menu-list" hidden>
+        <p class="menu-group">PHY 处理模型</p>
+        <button class="menu-item" data-model="eq">EQ 均衡模型</button>
+        <button class="menu-item" data-model="cdr">CDR 时钟恢复模型</button>
+        <button class="menu-item" data-model="pll">REF CLK / PLL 模型</button>
+        <button class="menu-item" data-model="eye">眼图与链路预算</button>
+        <button class="menu-item" data-model="bert">BERT 误码测试</button>
+        <p class="menu-group">链路模式</p>
+        <button class="menu-item" data-model="gen">Gen1–6 差异对照</button>
+        <button class="menu-item" data-model="compare">Flit / Non-Flit 模式差异</button>
+        <p class="menu-group">事务与排序</p>
+        <button class="menu-item" data-model="ordering">PCIe 排序规则（Ordering）</button>
+        <p class="menu-group">电源与系统</p>
+        <button class="menu-item" data-model="pm">PM 电源管理（L/D/P + 唤醒）</button>
+        <p class="menu-group">可靠性与可维护性</p>
+        <button class="menu-item" data-model="ras">RAS 可靠性 / AER / DPC</button>
+      </div>
+    </div>
+    <label>速度
+      <select id="speed">
+        <option value="0.03125" title="慢放 32 倍">-32×</option>
+        <option value="0.0625" title="慢放 16 倍">-16×</option>
+        <option value="0.125" title="慢放 8 倍">-8×</option>
+        <option value="0.25" title="慢放 4 倍">-4×</option>
+        <option value="0.5" selected title="慢放 2 倍">-2×</option>
+        <option value="1">1×</option>
+        <option value="2">2×</option>
+      </select>
+    </label>
+    <button id="themeToggle" title="切换深色 / 浅色">浅色</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <aside class="col left">
+    <section class="panel">
+      <div class="panel-head"><h2>拓扑</h2></div>
+      <div id="topology" class="topology"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>链路参数</h2></div>
+      <div id="linkInfo" class="kv"></div>
+    </section>
+
+    <section class="panel" id="phyPanel">
+      <div class="panel-head">
+        <h2>PHY 电气</h2>
+        <div class="head-actions">
+          <button id="phyToggle" class="target-chip">展开</button>
+          <button id="eyeBtn" class="target-chip">眼图</button>
+          <button id="bertBtn" class="target-chip">BERT</button>
+        </div>
+      </div>
+      <div id="phy" class="phy-panel"></div>
+    </section>
+
+    <section class="panel grow" id="ltssmPanel">
+      <div class="panel-head"><h2>LTSSM 状态机</h2></div>
+      <div id="ltssm" class="ltssm"></div>
+    </section>
+  </aside>
+
+  <section class="col center">
+    <section class="panel grow">
+      <div class="panel-head">
+        <h2>分层时序</h2>
+        <div class="head-actions">
+          <div class="view-switch">
+            <button id="viewTimeline" class="view-btn active">时序图</button>
+            <button id="viewFlow" class="view-btn">流程视图</button>
+          </div>
+          <div class="legend" id="legend">
+            <span><i style="background:#38bdf8"></i>TS1</span>
+            <span><i style="background:#22d3ee"></i>TS2</span>
+            <span><i style="background:#94a3b8"></i>SKP</span>
+            <span><i style="background:#a78bfa"></i>FLIT</span>
+            <span><i style="background:#fbbf24"></i>检测/状态</span>
+            <span class="legend-note">实线框 = 发送（TX）· 虚线框 = 接收（RX）</span>
+          </div>
+        </div>
+      </div>
+      <div class="timeline-wrap">
+        <div id="timeline"></div>
+        <div id="flow" class="flowview" hidden></div>
+      </div>
+      <div class="statusbar"><span id="status">就绪</span></div>
+    </section>
+
+    <section class="panel inspector-panel">
+      <div class="panel-head">
+        <h2>事件详情</h2>
+        <button id="detailTarget" class="target-chip">跟随 · 全部</button>
+      </div>
+      <div id="inspector" class="inspector"></div>
+    </section>
+  </section>
+
+  <aside class="col right">
+    <section class="panel" id="configPanel">
+      <div class="panel-head">
+        <h2>配置空间</h2>
+        <button id="configBtn" class="target-chip">布局</button>
+      </div>
+      <div id="config" class="config-panel"></div>
+    </section>
+
+    <section class="panel" id="counterPanel">
+      <div class="panel-head"><h2 id="counterTitle">训练计数器</h2></div>
+      <div id="counters"></div>
+    </section>
+
+    <section class="panel" id="flitPanel" hidden>
+      <div class="panel-head"><h2>Flit 统计</h2></div>
+      <div id="flit"></div>
+    </section>
+
+    <section class="panel" id="pmPanel" hidden>
+      <div class="panel-head">
+        <h2>电源管理</h2>
+        <button id="pmBtn" class="target-chip">详情</button>
+      </div>
+      <div id="pm"></div>
+    </section>
+
+    <section class="panel" id="irqPanel">
+      <div class="panel-head">
+        <h2>中断 / 错误</h2>
+        <button id="irqBtn" class="target-chip">详情</button>
+      </div>
+      <div id="irq"></div>
+    </section>
+
+    <section class="panel" id="atsPanel" hidden>
+      <div class="panel-head">
+        <h2>ATS / PRI</h2>
+      </div>
+      <div id="ats"></div>
+    </section>
+
+    <section class="panel grow">
+      <div class="panel-head">
+        <h2>事件日志</h2>
+        <span id="logCount" class="count">0</span>
+      </div>
+      <ul id="log" class="log"></ul>
+    </section>
+
+    <section class="panel" id="notesPanel">
+      <div class="panel-head">
+        <h2>说明</h2>
+        <button id="notesToggle" class="target-chip">展开</button>
+      </div>
+      <p id="notesSummary" class="notes-summary"></p>
+      <div id="scenarioMechanism" class="mech-links" hidden></div>
+      <div id="notesBody" class="notes" hidden>
+        <p>时间轴按 <b>1:100</b> 压缩：Detect 的规范计时 12 ms 在此显示为 120 µs。</p>
+        <p>Gen6 强制 Flit 模式（256B Flit、1b/1b PAM4）；Gen1–5 默认 Non-Flit，可在“模式”中切换对比。</p>
+        <p>“LTSSM 电源管理”场景演示 L0s / L1.0–1.2 / L2（FTS、CLKREQ#、Beacon 唤醒），并包含热插拔：PRSNT# → 槽位上电 → PERST# 释放 → 训练 → DLLSC / 热插拔中断 → 安全拔出。</p>
+        <p>“PHY 电气与均衡”场景演示 REF CLK/PLL、CDR 锁定、Equalization 收敛与 COM/眼图变化。</p>
+        <p>顶栏「典型模型」提供 EQ / CDR / REF CLK+PLL 的建模假设与动态演示，以及 PM 电源管理模型（L / D / P 状态、平台 / RP / EP 架构、CLKREQ# / Beacon / WAKE# 唤醒）与 RAS 可靠性模型（错误检测 → 分级 → 上报 → 隔离 → 恢复，含 AER / DPC / EDR / FLR / 热插拔）。</p>
+        <p>“Gen6 Flit 深入”场景演示 256B Flit 打包、FEC/CRC 校验与 Flit 级重传。</p>
+        <p>“Loopback / BERT”提供 Internal（器件内部）与 External（经通道）两套<b>独立</b>环回配置，顶栏选择后一次只运行一种，可分别选择 PRBS7/9/11/15/23/31 图案。</p>
+        <p>“设备枚举”场景演示 CfgRd0 / CfgWr0、BAR 探测/分配与 Memory Space 使能。</p>
+        <p>“内存读/写”场景演示 MRd→CplD、Posted MWr、流控信用与 UpdateFC。</p>
+        <p>“MSI / MSI-X”与“AER”场景演示中断消息与错误上报。</p>
+        <p>“DPC + RP PIO”场景演示下游端口隔离、Egress Control 与 RP PIO 错误终止（Fatal/Non-Fatal → 触发 DPC；Advisory → 仅记录并返回全 1）。</p>
+        <p>“ATS + PRI”场景演示 Translation Request / ATC 命中、Invalid Request、Invalidate 与 Page Request / PRG Response。</p>
+        <p>“PM D/P 状态”场景演示 D0–D3cold、P0–P2、PMCSR 与 PME 唤醒。</p>
+        <p>单步时自动浮窗跟随当前 LTSSM 状态；选中其他行则跟随该行最新事件。</p>
+        <p>速度支持 <b>-32× ~ 2×</b>：负号表示慢放（如 -4× 为 1/4 速）。</p>
+        <p>单击左侧 LTSSM 状态可查看定义、进入/退出条件与物理意义。</p>
+        <p>快捷键：<kbd>空格</kbd> 运行/暂停 · <kbd>→</kbd> 单步 · <kbd>←</kbd> 后退 · <kbd>R</kbd> 复位 · <kbd>Esc</kbd> 关闭弹窗。</p>
+      </div>
+    </section>
+  </aside>
+
+</main>
+
+<div id="eventModal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h3 id="modalTitle">事件详情</h3>
+      <button id="modalClose" class="icon-btn" aria-label="关闭">×</button>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：内存读（MRd → CplD，Split Transaction）。
  * 128B 读按 RCB=64B 拆成两个 CplD；展示 Tag 匹配、Cpl 信用与 UpdateFC。
@@ -10,6 +11,7 @@ import {
 } from './mem_common.js';
 
 export function buildMemRead(sim, opts = {}) {
+  resolveScenarioConfig('mem_read', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   setupMemScenario(sim, gen, width);
@@ -18,7 +20,7 @@ export function buildMemRead(sim, opts = {}) {
     'InitFC1 / InitFC2 交换 P / NP / Cpl 初始信用'));
   const tAfter = fcInit(sim, 16 * US);
   sim.at(tAfter, () => sim.beginPhase('read', '内存读 MRd → CplD', 'enum',
-    'RCB = 64B：128B 读被拆成两个 64B Completion'));
+    '教学案例：对齐的 128B 读选择两个 64B Completion，满足所选 RCB=64B（并非强制拆包）'));
 
   const t0 = tAfter + 12 * US;
   const tag = 1;
@@ -28,11 +30,11 @@ export function buildMemRead(sim, opts = {}) {
   const dws = sim.mem.readDws(MEM_ADDR, 32);
   const cpl1 = buildCpl({
     requester: RC_ID, completer: EP_ID, tag,
-    dataDws: dws.slice(0, 16), byteCount: 64, lowerAddress: 0,
+    dataDws: dws.slice(0, 16), byteCount: 128, lowerAddress: 0,
   });
   const cpl2 = buildCpl({
     requester: RC_ID, completer: EP_ID, tag,
-    dataDws: dws.slice(16), byteCount: 0, lowerAddress: 0x40,
+    dataDws: dws.slice(16), byteCount: 64, lowerAddress: 0x40,
   });
 
   tlpPair(sim, t0, 'RC', 'EP', req,
@@ -42,7 +44,7 @@ export function buildMemRead(sim, opts = {}) {
   ackPair(sim, t0 + 4 * US, 'EP', 'RC', `MRd Tag=${tag}`);
 
   tlpPair(sim, t0 + 10 * US, 'EP', 'RC', cpl1,
-    `CplD  ByteCount=64  Tag=${tag}  Data[0]=${hex32(dws[0])}`,
+    `CplD  ByteCount=128  Tag=${tag}  Data[0]=${hex32(dws[0])}`,
     '第 1 个 64B Completion（RCB=64B）；消耗 Cpl_Hdr 1 + Cpl_Data 4',
     () => {
       sim.fc.consume('EP', 'Cpl_Hdr', 1);
@@ -59,7 +61,7 @@ export function buildMemRead(sim, opts = {}) {
     });
 
   tlpPair(sim, t0 + 26 * US, 'EP', 'RC', cpl2,
-    `CplD  ByteCount=0  Tag=${tag}  Data[0]=${hex32(dws[16])}`,
+    `CplD  ByteCount=64  Tag=${tag}  Data[0]=${hex32(dws[16])}`,
     '第 2 个 64B Completion，Lower Address=0x40',
     () => {
       sim.fc.consume('EP', 'Cpl_Hdr', 1);

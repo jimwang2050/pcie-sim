@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：LTSSM 电源管理（L0 → L0s → L0 → L1 → Recovery → L0 → L2 → 唤醒）。
  *
@@ -21,6 +22,7 @@ import { buildDllp, buildPmMessage } from '../core/dllp.js';
 const US = 1000;
 
 export function buildLtssmPm(sim, opts = {}) {
+  resolveScenarioConfig('ltssm_pm', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   const link = sim.link;

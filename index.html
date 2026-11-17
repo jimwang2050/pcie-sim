@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PCIe Trace · 关键流程可视化</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1829'/%3E%3Ctext x='4' y='22' font-size='18' fill='%2338bdf8'%3EPT%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -116,6 +117,7 @@
   </div>
 </header>
 
+<p id="capabilityNote" class="capability-note" role="status" aria-live="polite"></p>
 <main class="layout">
 
   <aside class="col left">
@@ -245,7 +247,7 @@
         <p>“LTSSM 电源管理”场景演示 L0s / L1.0–1.2 / L2（FTS、CLKREQ#、Beacon 唤醒），并包含热插拔：PRSNT# → 槽位上电 → PERST# 释放 → 训练 → DLLSC / 热插拔中断 → 安全拔出。</p>
         <p>“PHY 电气与均衡”场景演示 REF CLK/PLL、CDR 锁定、Equalization 收敛与 COM/眼图变化。</p>
         <p>顶栏「典型模型」提供 EQ / CDR / REF CLK+PLL 的建模假设与动态演示，以及 PM 电源管理模型（L / D / P 状态、平台 / RP / EP 架构、CLKREQ# / Beacon / WAKE# 唤醒）与 RAS 可靠性模型（错误检测 → 分级 → 上报 → 隔离 → 恢复，含 AER / DPC / EDR / FLR / 热插拔）。</p>
-        <p>“Gen6 Flit 深入”场景演示 256B Flit 打包、FEC/CRC 校验与 Flit 级重传。</p>
+        <p>“Gen6 Flit 深入”场景演示 256B 布局与预设故障/重传流程；不执行标准 FM 编码或 CRC/FEC 算法。</p>
         <p>“Loopback / BERT”提供 Internal（器件内部）与 External（经通道）两套<b>独立</b>环回配置，顶栏选择后一次只运行一种，可分别选择 PRBS7/9/11/15/23/31 图案。</p>
         <p>“设备枚举”场景演示 CfgRd0 / CfgWr0、BAR 探测/分配与 Memory Space 使能。</p>
         <p>“内存读/写”场景演示 MRd→CplD、Posted MWr、流控信用与 UpdateFC。</p>

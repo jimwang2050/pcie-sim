@@ -17,6 +17,8 @@ export class Scheduler {
 
   /** 在绝对时间 t（ns）执行 fn。 */
   at(t, fn, meta = {}) {
+    if (!Number.isFinite(t) || t < this.time) throw new RangeError('事件时间必须有限且不早于当前时钟');
+    if (typeof fn !== 'function') throw new TypeError('事件回调必须是函数');
     const item = { t, seq: this.seq++, fn, meta };
     let lo = 0;
     let hi = this.items.length;
@@ -32,7 +34,8 @@ export class Scheduler {
 
   /** 在当前位置之后 delayNs 执行。 */
   after(delayNs, fn, meta = {}) {
-    return this.at(this.time + Math.max(0, delayNs), fn, meta);
+    if (!Number.isFinite(delayNs) || delayNs < 0) throw new RangeError('延迟必须是有限非负数');
+    return this.at(this.time + delayNs, fn, meta);
   }
 
   step() {

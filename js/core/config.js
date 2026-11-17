@@ -49,6 +49,7 @@ export class ConfigSpace {
     this.write16Raw(0x2c, this.vendorId);
     this.write16Raw(0x2e, this.deviceId);
     this.mem[0x34] = 0x00;
+    for (const bar of this.bars) this.write32Raw(bar.offset, bar.is64 ? 4 : 0);
   }
 
   // ---------- 原始读写 ----------
@@ -88,44 +89,76 @@ export class ConfigSpace {
 
   barMask(bar, half) {
     if (bar.is64 && half === 'high') return 0xffffffff;
-    return (~(bar.size - 1)) >>> 0;
+    return ((~(bar.size - 1) & 0xfffffff0) | (bar.is64 ? 4 : 0)) >>> 0;
   }
 
   baseHex(bar) {
     if (!bar.is64) return '0x' + (bar.baseLow >>> 0).toString(16).toUpperCase().padStart(8, '0');
-    const v = bar.baseHigh * 0x100000000 + (bar.baseLow >>> 0);
+    const v = (BigInt(bar.baseHigh >>> 0) << 32n) | BigInt(bar.baseLow >>> 0);
     return '0x' + v.toString(16).toUpperCase().padStart(16, '0');
   }
 
   // ---------- 配置空间访问 ----------
+  validateAccess(offset, size) {
+    if (![1, 2, 4].includes(size) || !Number.isInteger(offset)
+        || offset < 0 || offset + size > this.mem.length || offset % size) {
+      throw new RangeError('配置访问须为自然对齐的 8/16/32 位，范围 0–4095');
+    }
+  }
+
   read(offset, size = 4) {
-    const b = this.barAt(offset);
-    if (b && b.bar.sizing) return this.barMask(b.bar, b.half);
+    this.validateAccess(offset, size);
+    const aligned = offset & ~3;
+    const b = this.barAt(aligned);
+    const probing = b && b.bar[b.half === 'low' ? 'probeLow' : 'probeHigh'];
+    if (probing) {
+      const mask = size === 4 ? 0xffffffff : (2 ** (size * 8) - 1);
+      return ((this.barMask(b.bar, b.half) >>> ((offset - aligned) * 8)) & mask) >>> 0;
+    }
     return this.readRaw(offset, size);
   }
 
-  write(offset, value, size = 4) {
-    const b = this.barAt(offset);
+  write(offset, value, size = 4, byteEnable = (1 << size) - 1) {
+    this.validateAccess(offset, size);
+    if (!Number.isInteger(value) || value < 0 || value >= 2 ** (size * 8)) throw new RangeError('配置写数据超出访问宽度');
+    if (!Number.isInteger(byteEnable) || byteEnable < 0 || byteEnable >= 2 ** size) throw new RangeError('无效配置字节使能');
+    const aligned = offset & ~3;
+    const b = this.barAt(aligned);
     if (b) {
-      if ((value >>> 0) === 0xffffffff) {
+      if (byteEnable === 0) return;
+      const key = b.half === 'low' ? 'probeLow' : 'probeHigh';
+      if (size === 4 && value === 0xffffffff && byteEnable === 15) {
+        b.bar[key] = true;
         b.bar.sizing = true;
         return;
       }
-      b.bar.sizing = false;
-      const mask = this.barMask(b.bar, 'low');
-      if (!b.bar.is64) {
-        b.bar.baseLow = value & mask;
-        this.write32Raw(offset, b.bar.baseLow);
-      } else if (b.half === 'low') {
-        b.bar.baseLow = value & mask;
-        this.write32Raw(offset, b.bar.baseLow);
+      let merged = this.readRaw(aligned);
+      for (let i = 0; i < size; i++) {
+        if (!(byteEnable & (1 << i))) continue;
+        const shift = (offset - aligned + i) * 8;
+        merged = ((merged & ~(0xff << shift)) | (((value >>> (i * 8)) & 0xff) << shift)) >>> 0;
+      }
+      b.bar[key] = false;
+      b.bar.sizing = !!(b.bar.probeLow || b.bar.probeHigh);
+      if (b.half === 'low') {
+        b.bar.baseLow = (merged & (~(b.bar.size - 1)) & 0xfffffff0) >>> 0;
+        this.write32Raw(aligned, b.bar.baseLow | (b.bar.is64 ? 4 : 0));
       } else {
-        b.bar.baseHigh = value >>> 0;
-        this.write32Raw(offset, b.bar.baseHigh);
+        b.bar.baseHigh = merged;
+        this.write32Raw(aligned, merged);
       }
       return;
     }
-    this.write32Raw(offset, value);
+    // Implemented Type 0 subset: ID/class/header/subsystem and unimplemented
+    // capabilities are read-only. Command exposes only implemented controls.
+    for (let i = 0; i < size; i++) {
+      if (!(byteEnable & (1 << i))) continue;
+      const at = offset + i;
+      const incoming = (value >>> (8 * i)) & 0xff;
+      const rw = ({ 4: 0x47, 5: 0x05, 0x0c: 0xff, 0x3c: 0xff })[at] || 0;
+      const w1c = at === 6 ? 0 : at === 7 ? 0xf9 : 0;
+      this.mem[at] = ((this.mem[at] & ~rw) | (incoming & rw)) & ~(incoming & w1c);
+    }
   }
 
   get command() {

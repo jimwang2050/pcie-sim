@@ -1,0 +1,17 @@
+{
+  "comparison": "protocol header DWORDs; upstream network byte order normalized",
+  "referenceTlpSha256": "0c87e6896ef8ff5b9576d33326d3c1045160b3729c1510c986471686ae348fab",
+  "passed": 10,
+  "vectors": [
+    "cfg-rd0",
+    "cfg-wr0",
+    "cfg-rd1",
+    "cfg-wr1",
+    "mrd-3dw",
+    "mwr-3dw",
+    "mrd-4dw",
+    "mwr-4dw",
+    "cpl",
+    "cpld"
+  ]
+}

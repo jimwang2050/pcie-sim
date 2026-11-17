@@ -3,11 +3,11 @@
  *
  * 256B Flit 教学布局：
  *   [0, 236)   TLP 区域（可打包多个 TLP，无 STP/END 成帧）
- *   [236, 242) DLP（序号 / TLP 数 / Flit Usage / 状态）
- *   [242, 250) CRC（双份 CRC-32）
+ *   [236, 242) DLP（仅作展示占位，不是标准位域编码）
+ *   [242, 250) CRC（8B 占位，未实现标准算法）
  *   [250, 256) FEC（3 组 × 2B）
  *
- * 错误模型：FEC 可纠正 ≤2 bit；超过则 CRC 失败，触发 Flit 级重传。
+ * 故障结果由场景显式预设；不按 bit 数推导标准 FEC 能力，不执行真实 CRC/FEC。
  */
 import { RATE_BY_GEN, byteTimeNs } from './packet.js';
 import { buildMem } from './tlp.js';
@@ -21,35 +21,10 @@ export const FEC_GROUPS = 3;
 
 export const FLIT_SEGMENTS = [
   { name: 'TLP 区域', offset: 0, length: 236, desc: '承载 TLP；Flit 内无 STP/END 成帧，按 Flit 边界与 TLP 长度解析' },
-  { name: 'DLP', offset: 236, length: 6, desc: 'Flit 序号、TLP 数、Flit Usage、Ack/Nak/Discard 状态' },
-  { name: 'CRC', offset: 242, length: 8, desc: '双份 CRC-32（FEC 解码后校验）' },
-  { name: 'FEC', offset: 250, length: 6, desc: '3 组 FEC 校验字节，用于前向纠错' },
+  { name: 'DLP', offset: 236, length: 6, desc: '标准 DLP 为 6B；本模型的序号/数量字节仅为示意，不是标准位域' },
+  { name: 'CRC', offset: 242, length: 8, desc: '标准为 8B CRC；本模型未实现，字节置零占位' },
+  { name: 'FEC', offset: 250, length: 6, desc: '标准为三路交织 ECC；本模型未实现，字节置零占位' },
 ];
-
-const CRC_TABLE = (() => {
-  const table = new Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let c = i;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[i] = c >>> 0;
-  }
-  return table;
-})();
-
-function crc32(bytes, start, end) {
-  let c = 0xffffffff;
-  for (let i = start; i < end; i += 1) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-function fecParity(bytes, group, half) {
-  let parity = 0;
-  for (let i = group; i < CRC_OFFSET; i += FEC_GROUPS) {
-    const v = half === 0 ? bytes[i] : ((bytes[i] << 1) | (bytes[i] >>> 7)) & 0xff;
-    parity ^= v;
-  }
-  return parity & 0xff;
-}
 
 export function flitTimeNs(gen, width) {
   return byteTimeNs(gen, width, FLIT_SIZE);
@@ -99,19 +74,8 @@ export function buildFlit(opts = {}) {
   bytes[DLP_OFFSET + 4] = 0x00; // status
   bytes[DLP_OFFSET + 5] = 0x00;
 
-  // CRC：双份
-  const crcValue = crc32(bytes, 0, CRC_OFFSET);
-  const inv = (~crcValue) >>> 0;
-  for (let i = 0; i < 4; i += 1) {
-    bytes[CRC_OFFSET + i] = (crcValue >> (8 * i)) & 0xff;
-    bytes[CRC_OFFSET + 4 + i] = (inv >> (8 * i)) & 0xff;
-  }
-
-  // FEC：3 组，每组 2B
-  for (let g = 0; g < FEC_GROUPS; g += 1) {
-    bytes[FEC_OFFSET + g * 2] = fecParity(bytes, g, 0);
-    bytes[FEC_OFFSET + g * 2 + 1] = fecParity(bytes, g, 1);
-  }
+  // CRC/ECC bytes remain zero: no fabricated protection code is presented as PCIe.
+  // Actual CRC/FEC and FM TLP/DLP encoding are deferred to the optional M5.
 
   const payloadName = packed.length
     ? `${packed.length} TLP · ${payloadBytes}B`
@@ -120,6 +84,10 @@ export function buildFlit(opts = {}) {
 
   return {
     kind: 'FLIT',
+    fidelity: 'schematic',
+    wireCompatible: false,
+    payloadEncoding: 'nonflit-header-illustration',
+    modelNote: '布局示意：TLP 使用 NFM 头作占位；DLP 非标准编码；CRC/FEC 未实现。故障结果为预设。',
     name: 'FLIT',
     seq,
     gen,
@@ -132,10 +100,10 @@ export function buildFlit(opts = {}) {
     padding,
     overflow,
     dlp: { seq, tlpCount: packed.length, usage: packed.length ? 'DATA' : 'IDLE' },
-    crc: { value: crcValue, status: 'OK' },
-    fec: { groups: FEC_GROUPS, status: 'OK' },
+    crc: { value: null, implemented: false, status: 'NOT_IMPLEMENTED' },
+    fec: { groups: FEC_GROUPS, implemented: false, status: 'NOT_IMPLEMENTED' },
     retry: { count: 0 },
-    check: { status: 'OK', fec: 'OK', crc: 'OK', bitErrors: 0, retry: false },
+    check: { status: 'OK', fec: 'OK', crc: 'OK', bitErrors: 0, retry: false, simulated: true, verified: false },
     summary: `FLIT #${seq} · 256B · ${RATE_BY_GEN[gen] ?? gen} · ${payloadName}`,
     fields: [
       { name: 'Flit 序号', value: String(seq), display: `#${seq}`, desc: '用于 Flit 级 Ack/Nak 与重放' },
@@ -143,23 +111,25 @@ export function buildFlit(opts = {}) {
       { name: 'TLP 区域', value: String(TLP_AREA), display: `${TLP_AREA} B`, desc: '可打包多个 TLP' },
       { name: '已用 / 填充', value: String(payloadBytes), display: `${payloadBytes} B / ${padding} B`, desc: 'TLP 数据与填充字节' },
       { name: 'TLP 数量', value: String(packed.length), display: String(packed.length), desc: '本 Flit 内打包的 TLP 数' },
-      { name: 'DLP', value: '6', display: '6 B', desc: '序号 / TLP 数 / Usage / 状态' },
-      { name: 'CRC', value: '8', display: '8 B', desc: '双份 CRC-32' },
+      { name: 'DLP', value: '6', display: '6 B', desc: '示意占位字段，非标准 DLP 位域' },
+      { name: 'CRC', value: '8', display: '8 B', desc: '8B CRC 占位；未执行真实校验' },
       { name: 'FEC', value: '6', display: '3 组 × 2B', desc: '前向纠错字节' },
     ],
     realTimeNs: flitTimeNs(gen, width),
   };
 }
 
-/** 模拟 FEC / CRC 检查。bitErrors=0 正常；≤2 可纠正；>2 不可纠正。 */
-export function checkFlit(flit, { bitErrors = 0 } = {}) {
-  const fec = bitErrors === 0 ? 'OK' : (bitErrors <= 2 ? 'CORRECTED' : 'FAIL');
-  const crc = bitErrors > 2 ? 'FAIL' : 'OK';
-  const status = bitErrors === 0 ? 'OK' : (bitErrors <= 2 ? 'CORRECTED' : 'UNCORRECTABLE');
-  const result = { bitErrors, fec, crc, status, retry: status === 'UNCORRECTABLE' };
+/** Record an explicitly scripted outcome, never a byte-level CRC/FEC verdict. */
+export function checkFlit(flit, { bitErrors = 0, outcome = null } = {}) {
+  if (!Number.isInteger(bitErrors) || bitErrors < 0) throw new RangeError('示意误码数必须为非负整数');
+  if (bitErrors > 0 && outcome === null) throw new RangeError('示意故障必须显式指定 outcome；不能按误码 bit 数推导纠错结果');
+  const selected = outcome ?? 'clean';
+  if (!['clean', 'corrected', 'uncorrectable'].includes(selected)) throw new RangeError('未知故障示意结果');
+  const fec = selected === 'corrected' ? 'CORRECTED' : selected === 'uncorrectable' ? 'FAIL' : 'OK';
+  const crc = selected === 'uncorrectable' ? 'FAIL' : 'OK';
+  const status = selected === 'clean' ? 'OK' : selected === 'corrected' ? 'CORRECTED' : 'UNCORRECTABLE';
+  const result = { bitErrors, fec, crc, status, retry: selected === 'uncorrectable', simulated: true, verified: false };
   flit.check = result;
-  flit.fec.status = fec;
-  flit.crc.status = crc;
   return result;
 }
 

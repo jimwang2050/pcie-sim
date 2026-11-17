@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：Gen6 Flit 深入。
  * 打包多个 TLP → FEC/CRC 校验 → 可纠正错误 → 不可纠错误 → Flit 级重传。
@@ -18,6 +19,7 @@ function snapFlit(f) {
 }
 
 export function buildFlitGen6(sim, opts = {}) {
+  resolveScenarioConfig('flit_gen6', opts);
   const width = opts.width ?? 8;
   setupLinkL0(sim, 6, width, [
     { key: 'STATE', label: 'LTSSM 状态' },
@@ -43,13 +45,15 @@ export function buildFlitGen6(sim, opts = {}) {
   const flit0 = buildFlit({ seq: 0, gen: 6, width, tlps: [t1, t2] });
   const flit1 = buildFlit({ seq: 1, gen: 6, width, tlps: [t1] });
   const flit2 = buildFlit({ seq: 2, gen: 6, width, payload: 'idle' });
+  // Runtime packets belong to snapshot state; callbacks only capture stable sequence IDs.
+  sim.scenarioState.flits = [flit0, flit1, flit2];
 
   function flitEvent(t, side, dir, flit, summary, detail, status = 'ok', before = null) {
     sim.at(t, () => {
       if (before) before();
       sim.emit({
         layer: 'FLIT', row: `${side}.FLIT`, side, dir, type: 'FLIT',
-        summary, detail, packet: snapFlit(flit), dur_ns: flit.realTimeNs, status,
+        summary, detail, packet: snapFlit(sim.scenarioState.flits[flit.seq]), dur_ns: flit.realTimeNs, status,
       });
     });
   }
@@ -59,7 +63,7 @@ export function buildFlitGen6(sim, opts = {}) {
       if (before) before();
       sim.emit({
         layer: 'FLIT', row: 'EP.FLIT', side: 'EP', dir: 'RX', type: 'FEC',
-        summary, detail, packet: snapFlit(flit), status,
+        summary, detail, packet: snapFlit(sim.scenarioState.flits[flit.seq]), status,
       });
     });
   }
@@ -72,21 +76,21 @@ export function buildFlitGen6(sim, opts = {}) {
 
   flitEvent(10 * US, 'RC', 'TX', flit0,
     `FLIT #0：${flit0.packed.length} 个 TLP，已用 ${flit0.payloadBytes}B / 填充 ${flit0.padding}B`,
-    '两个 MWr 被打包进同一个 Flit；无 STP/END，按 DLP 中的 TLP 数量解析',
+    '两个 MWr 被打包进同一个 Flit；无 STP/END，本图按预设 TLP 数量展示，非标准 FM TLP/DLP 编码',
     'ok', () => {
-      const c = checkFlit(flit0);
-      stats.onFlit(flit0, c);
+      const c = checkFlit(sim.scenarioState.flits[0]);
+      stats.onFlit(sim.scenarioState.flits[0], c);
     });
-  flitEvent(12 * US, 'EP', 'RX', flit0, 'EP 接收 FLIT #0', 'FEC/CRC 待校验');
-  fecEvent(22 * US, flit0, 'FEC 3 组通过，CRC OK',
-    '无错误：FEC 校验一致，双份 CRC-32 匹配');
+  flitEvent(12 * US, 'EP', 'RX', flit0, 'EP 接收 FLIT #0', 'FEC/CRC 处理流程示意（未执行真实算法）');
+  fecEvent(22 * US, flit0, '示意：FEC 处理后 CRC 匹配',
+    '预设正常结果：真实接收顺序为 FEC 解码/纠错后 CRC 校验；本模型不执行算法');
 
   sim.at(30 * US, () => sim.beginPhase('fec', 'FEC 纠错', 'fec',
-    'FEC 可纠正 ≤2 bit；超过则 CRC 失败'));
-  fecEvent(40 * US, flit0, '注入 2 bit 错误 → FEC 纠正，CRC 通过',
-    'FEC 组内纠正后 CRC 仍匹配，Flit 无需重传', 'ok', () => {
-      const c = checkFlit(flit0, { bitErrors: 2 });
-      stats.onFlit(flit0, c);
+    '三路交织、符号级纠错；本场景显式预设纠正或不可纠结果'));
+  fecEvent(40 * US, flit0, '示意注入 2 bit：预设 FEC 已纠正、CRC 匹配',
+    '预设纠正结果，不由 bit 数推导；实际取决于错误分组/位置与真实校验', 'ok', () => {
+      const c = checkFlit(sim.scenarioState.flits[0], { bitErrors: 2, outcome: 'corrected' });
+      stats.onFlit(sim.scenarioState.flits[0], c);
     });
 
   sim.at(54 * US, () => sim.beginPhase('retry', 'Flit 级重传', 'retry',
@@ -94,15 +98,15 @@ export function buildFlitGen6(sim, opts = {}) {
   flitEvent(60 * US, 'RC', 'TX', flit1,
     `FLIT #1：${flit1.packed.length} 个 TLP，已用 ${flit1.payloadBytes}B`,
     '单 TLP Flit', 'ok', () => {
-      const c = checkFlit(flit1);
-      stats.onFlit(flit1, c);
+      const c = checkFlit(sim.scenarioState.flits[1]);
+      stats.onFlit(sim.scenarioState.flits[1], c);
     });
-  flitEvent(62 * US, 'EP', 'RX', flit1, 'EP 接收 FLIT #1', 'FEC/CRC 待校验');
+  flitEvent(62 * US, 'EP', 'RX', flit1, 'EP 接收 FLIT #1', 'FEC/CRC 处理流程示意（未执行真实算法）');
 
-  fecEvent(76 * US, flit1, 'FEC 不可纠（9 bit），CRC 失败',
-    '错误超过 FEC 纠正能力，Flit 被标记为无效', 'error', () => {
-      const c = checkFlit(flit1, { bitErrors: 9 });
-      stats.onFlit(flit1, c);
+  fecEvent(76 * US, flit1, '示意注入 9 bit：预设不可纠、CRC 不匹配',
+    '预设不可纠结果，不代表所有 9 bit 分布都不可纠；无效 Flit 进入重放流程', 'error', () => {
+      const c = checkFlit(sim.scenarioState.flits[1], { bitErrors: 9, outcome: 'uncorrectable' });
+      stats.onFlit(sim.scenarioState.flits[1], c);
     });
 
   sim.at(86 * US, () => sim.emit({
@@ -119,10 +123,10 @@ export function buildFlitGen6(sim, opts = {}) {
       detail: 'Flit 级重传：重放整个 256B Flit，而非单个 TLP', status: 'ok',
     });
   });
-  flitEvent(100 * US, 'EP', 'RX', flit1, 'EP 重新接收 Flit #1：FEC/CRC 通过',
+  flitEvent(100 * US, 'EP', 'RX', flit1, '示意：重放后预设 FEC/CRC 正常',
     '重放成功，链路继续', 'ok', () => {
-      const c = checkFlit(flit1, { bitErrors: 0 });
-      stats.onFlit(flit1, c);
+      const c = checkFlit(sim.scenarioState.flits[1], { bitErrors: 0 });
+      stats.onFlit(sim.scenarioState.flits[1], c);
     });
 
   sim.at(112 * US, () => sim.emit({
@@ -136,8 +140,8 @@ export function buildFlitGen6(sim, opts = {}) {
     'Flit Mode 正常传输'));
   flitEvent(130 * US, 'RC', 'TX', flit2, 'FLIT #2：IDLE',
     '无 TLP 时发送 IDLE Flit，维持 Flit 边界与序号', 'ok', () => {
-      const c = checkFlit(flit2);
-      stats.onFlit(flit2, c);
+      const c = checkFlit(sim.scenarioState.flits[2]);
+      stats.onFlit(sim.scenarioState.flits[2], c);
     });
 
   sim.at(150 * US, () => sim.endPhase());

@@ -6,7 +6,18 @@
 
 - 技术栈：原生 HTML + CSS + ES Module JavaScript，无构建步骤、无第三方库
 - 运行方式：任意静态服务器（内置 `npm run serve`）
-- 测试：Node 内置测试运行器，50 项用例
+- 测试：Node 内置模型/协议回归 + Playwright 浏览器冒烟（开发依赖）
+
+## 0.2 升级（M0–M1）
+
+- NFM 请求头按协议 DWORD 顺序展示，修复 CfgRd Length、BE、Completion Byte Count；10 组独立头向量已与 cocotbext-pcie 编码器交叉核验。
+- Type 0 配置子集支持 8/16/32 位访问、字节使能、RO/RW1C、BAR 固定类型位及独立高低 DWORD 探测；64 位地址无损表示。
+- Flit 场景可局部回退重放；事件载荷不可变；界面显示最多 200 步的历史边界。
+- 13 场景统一能力表：NFM 事务场景暂限 Gen1–5；低速 FM 仅在训练示意中开放。未实现组合明确拒绝，不静默覆盖用户配置。
+- Gen6 Flit 仅是布局和显式故障结果示意；TLP/DLP 非标准 FM 编码，CRC/ECC 字节置零占位，不执行真实 CRC/FEC。
+- 流控耗尽阻塞、BERT 统计判定与高级场景校准属于 M2；完整真实 FM 编码属于可选 M5。
+
+详见 [M0–M1 交付说明](docs/M0_M1_DELIVERY.md)。
 
 ## 快速开始
 
@@ -15,7 +26,9 @@ cd pcie-sim
 npm run serve     # python3 -m http.server 8123
 # 打开 http://localhost:8123
 
-npm test          # node --test tests/*.test.js
+npm test          # 核心/协议/场景矩阵/回退测试，不依赖 npm install
+npm ci            # 仅开发浏览器回归需要
+npm run test:browser  # 默认使用本机 Chrome；CI 使用 Playwright Chromium
 ```
 
 也可以直接访问已发布的 GitHub Pages：<https://jimwang2050.github.io/pcie-sim/>（`main` 分支根目录，纯静态、无需构建）。
@@ -38,7 +51,7 @@ npm test          # node --test tests/*.test.js
 | 链路训练 | Detect → Polling → Configuration → L0，含 Gen6 Flit |
 | LTSSM 电源管理 | L0s / L1.0–1.2 / L2 进入与唤醒（FTS、CLKREQ#、Beacon、WAKE#）+ 热插拔 |
 | PHY 电气与均衡 | REF CLK / PLL、CDR 锁定、EQ 收敛、COM 与眼图 |
-| Gen6 Flit 深入 | 256B Flit 打包、FEC/CRC、Flit 级重传 |
+| Gen6 Flit 深入 | 256B 布局与预设故障/Flit 重放示意，未实现真实 CRC/FEC |
 | Loopback / BERT | Internal / External 两套独立环回 + 多图案误码统计 |
 | 设备枚举 | CfgRd0 / CfgWr0、BAR 探测与分配、Memory Enable |
 | 内存读 / 写 | MRd → CplD、Posted MWr、信用与 UpdateFC |
@@ -58,7 +71,7 @@ npm test          # node --test tests/*.test.js
 | CDR 时钟恢复 | 相位检测 → 环路滤波 → VCO 的闭环；UNLOCKED / FREQ_LOCK / PHASE_LOCK / BIT_LOCK 四阶段的 ppm、相位误差与抖动惩罚 | 阶段框选对应环节，展示锁定过程与采样窗口 |
 | REF CLK / PLL | 平台参考时钟（RP / EP 共用、SSC）、CLKREQ# 门控与上拉电阻、PLL 倍频产生最终 REF CLK；链路空闲的来源 | 横向信号链，展示门控开启 / 关闭时 PLL 与 REF CLK 的状态 |
 | 眼图与链路预算 | NRZ / PAM4 眼图，叠加高斯白噪声（Box–Muller）与随机抖动模拟分析仪 persistence；Gen6 PAM4 三眼紧贴、电平轨线与轮廓 | 眼图随 Gen / 均衡 / 噪声参数变化重绘 |
-| BERT 误码测试 | PRBS7/9/11/15/23/31 图案、Internal / External 两套独立环回、误码注入与 BER 置信区间 | 切换图案与环回方式，实时统计误码率 |
+| BERT 误码测试 | PRBS7/9/11/15/23/31 图案、Internal / External 两套独立环回、误码注入与 BER 统计（置信判定尚待 M2 校准） | 切换图案与环回方式，实时统计误码率 |
 | Gen1–6 差异对照 | 2.5–64 GT/s、8b/10b / 128b/130b / PAM4 + Flit、FEC 与均衡要求 | 表格对照各代速率、编码、调制与关键机制 |
 | Flit / Non-Flit | 256B Flit 打包、FEC + CRC、Flit 级重传 vs DLLP Ack/Nak 的差异 | 并排对照两种模式的字段与重传粒度 |
 | 排序规则（Ordering） | PCIe 6.0 Table 2-42 四类事务的超越矩阵（默认 a / 例外 b）、RO / IDO、同 TxID Completion、死锁避免；Table J-1 九条规则及其系统需求 | 矩阵按行 / 列着色；「生产-消费者」24 秒慢放演示：RC（CPU / RAM dest / RP）↔ EP（EP / Status / Manager / RAM source），P_D 可多块在途，2 次 NP_S 轮询，CPL#1（flag=0）夹在 P_D1 / P_D2 之间且不超越 P_D，最后一次 CPL#2 返回 flag=1 |
@@ -89,7 +102,7 @@ pcie-sim/
 │   └── ui/               # 渲染与视图
 │       ├── timeline.js flowview.js topology.js
 │       ├── panels.js models.js eye.js cfg_layout.js
-└── tests/link.test.js    # 50 项单元 / 集成测试
+└── tests/link.test.js    # 原有场景测试；另有 accuracy/scenarios 回归与 fixtures
 ```
 
 ## 参考案例与来源
@@ -154,4 +167,4 @@ pcie-sim/
 npm test
 ```
 
-覆盖有序集编解码与传输时间、链路训练与变速、Gen6 Flit 打包 / FEC / 重传、TLP 与配置空间 / BAR 枚举、流控信用、内存读写、MSI / MSI-X、AER、DPC + RP PIO、ATS + PRI、PM 状态机与 PMCSR、PHY 与均衡、Loopback / BERT、单步回退、事件确定性，以及 PM 典型模型渲染片段的存在性断言。
+覆盖有序集编解码与传输时间、链路训练与变速、Gen6 Flit 布局 / 显式故障结果 / 重传示意、TLP 与配置空间 / BAR 枚举、流控信用、内存读写、MSI / MSI-X、AER、DPC + RP PIO、ATS + PRI、PM 状态机与 PMCSR、PHY 与均衡、Loopback / BERT、单步回退、事件确定性，以及 PM 典型模型渲染片段的存在性断言。

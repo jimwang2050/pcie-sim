@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：设备枚举（M2）。
  *
@@ -26,6 +27,7 @@ function offText(reg) {
 }
 
 export function buildEnumeration(sim, opts = {}) {
+  resolveScenarioConfig('enumeration', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   const link = sim.link;
@@ -127,6 +129,11 @@ export function buildEnumeration(sim, opts = {}) {
     ackAt(t0 + 4 * US, 'EP', 'TX', `CfgWr0 Tag=${myTag}`);
     ackAt(t0 + 6 * US, 'RC', 'RX', `CfgWr0 Tag=${myTag}`);
     sim.at(t0 + 3 * US, () => sim.config.write(reg, value, 4));
+    const completion = buildCpl({ requester: RC_ID, completer: EP_ID, tag: myTag, byteCount: 4, requestKind: 'CfgWr0' });
+    tlpAt(t0 + 8 * US, 'EP', 'TX', completion, `EP → RC  Cpl  ${label} 写入完成`, '配置写为 Non-Posted；Ack 不代替事务完成');
+    tlpAt(t0 + 10 * US, 'RC', 'RX', completion, `RC 接收 Cpl  ${label}`);
+    ackAt(t0 + 12 * US, 'RC', 'TX', `Cpl Tag=${myTag}`);
+    ackAt(t0 + 14 * US, 'EP', 'RX', `Cpl Tag=${myTag}`);
     cur = t0 + 24 * US;
   }
 
@@ -144,6 +151,7 @@ export function buildEnumeration(sim, opts = {}) {
   // ---------- BAR 探测与分配 ----------
   sim.at(cur, () => sim.beginPhase('enum-bars', 'BAR 探测与分配', 'enum', '写全 1 读回大小，再写入基址'));
   cfgWrite(0x10, 0xffffffff, 'BAR0 写全 1（探测大小）', '64bit BAR 低半');
+  cfgWrite(0x14, 0xffffffff, 'BAR0 高 32 位写全 1（探测大小）');
   cfgRead(0x10, 'BAR0 低 32 位掩码');
   cfgRead(0x14, 'BAR0 高 32 位掩码');
   cfgWrite(0x10, 0x80000000, 'BAR0 低 32 位基址');

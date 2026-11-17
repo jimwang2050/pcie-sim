@@ -467,14 +467,15 @@ test('TLP：CfgRd0 / CfgWr0 / CplD 编解码', () => {
 test('配置空间：BAR 探测、64bit 分配与 Memory Enable', () => {
   const c = new ConfigSpace();
   assert.equal(c.read(0x00), 0x56781234);
-  assert.equal(c.read(0x0e) & 0xff, 0x00);
+  assert.equal(c.read(0x0e, 1) & 0xff, 0x00);
 
   c.write(0x10, 0xffffffff);
-  assert.equal(c.read(0x10), 0xfffff000, '4KB BAR 大小掩码');
+  c.write(0x14, 0xffffffff);
+  assert.equal(c.read(0x10), 0xfffff004, '4KB BAR 掩码保留 64bit 类型');
   assert.equal(c.read(0x14), 0xffffffff, '64bit BAR 高 32 位掩码');
   c.write(0x10, 0x80000000);
   c.write(0x14, 0x00000000);
-  assert.equal(c.read(0x10), 0x80000000);
+  assert.equal(c.read(0x10), 0x80000004);
   assert.equal(c.baseHex(c.bars[0]), '0x0000000080000000');
 
   c.write(0x18, 0xffffffff);
@@ -493,7 +494,7 @@ test('枚举场景：完成 BAR 分配与 Memory Space 使能', () => {
   sim.runToEnd();
 
   assert.equal(sim.link.ports.RC.state, 'L0');
-  assert.equal(sim.config.read(0x10), 0x80000000);
+  assert.equal(sim.config.read(0x10), 0x80000004);
   assert.equal(sim.config.read(0x18), 0x90000000);
   assert.equal(sim.config.command & 0x2, 0x2);
   assert.equal(info.rows.length, 5);
@@ -860,7 +861,7 @@ test('后退可恢复配置空间 BAR 状态', () => {
 
   const bar0 = sim.config.read(0x10);
   const command = sim.config.command;
-  assert.equal(bar0, 0x80000000);
+  assert.equal(bar0, 0x80000004);
 
   for (let i = 0; i < 12; i += 1) sim.stepBack();
   sim.runToEnd();
@@ -943,12 +944,12 @@ test('Flit 打包：多 TLP、DLP 与填充', () => {
   assert.equal(f.overflow, false);
 });
 
-test('Flit FEC/CRC：可纠正与不可纠', () => {
+test('Flit 故障示意：显式预设纠正与不可纠（非真实校验）', () => {
   const f = buildFlit({ seq: 0, gen: 6, width: 8, payload: 'mw' });
   assert.equal(checkFlit(f, { bitErrors: 0 }).status, 'OK');
-  assert.equal(checkFlit(f, { bitErrors: 2 }).status, 'CORRECTED');
+  assert.equal(checkFlit(f, { bitErrors: 2, outcome: 'corrected' }).status, 'CORRECTED');
 
-  const bad = checkFlit(f, { bitErrors: 9 });
+  const bad = checkFlit(f, { bitErrors: 9, outcome: 'uncorrectable' });
   assert.equal(bad.status, 'UNCORRECTABLE');
   assert.equal(bad.crc, 'FAIL');
   assert.equal(bad.retry, true);

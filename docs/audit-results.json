@@ -1,0 +1,64 @@
+{
+  "scope": "Local Node model probes; no browser or compliance validation",
+  "matrix": {
+    "runs": 390,
+    "failures": []
+  },
+  "probes": {
+    "partialReplay": {
+      "equal": false,
+      "originalCheck": {
+        "bitErrors": 0,
+        "fec": "OK",
+        "crc": "OK",
+        "status": "OK",
+        "retry": false
+      },
+      "replayedCheck": {
+        "bitErrors": 2,
+        "fec": "CORRECTED",
+        "crc": "OK",
+        "status": "CORRECTED",
+        "retry": false
+      }
+    },
+    "config": {
+      "statusAfter16BitCommandWrite": 0,
+      "bar0TypeBits": 0
+    },
+    "creditOverdraw": {
+      "requested": 2,
+      "availableBefore": 1,
+      "result": 0
+    },
+    "bert": {
+      "bits": 0,
+      "pass": true
+    },
+    "schedulerPastEvent": {
+      "previousTime": 100,
+      "newTime": 10
+    },
+    "corruptedFlitWithoutErrorHint": {
+      "bitErrors": 0,
+      "fec": "OK",
+      "crc": "OK",
+      "status": "OK",
+      "retry": false
+    },
+    "cfgRead": {
+      "dwordsInInternalByteOrder": [
+        "0x04000000",
+        "0x01000010",
+        "0x1234560f"
+      ]
+    },
+    "memoryRead": {
+      "dwordsInInternalByteOrder": [
+        "0x00000020",
+        "0x80001000",
+        "0x1234560f"
+      ]
+    }
+  }
+}

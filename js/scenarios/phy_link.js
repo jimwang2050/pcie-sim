@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：PHY 电气与均衡动态过程。
  *
@@ -10,6 +11,7 @@ import { cdrText } from '../core/phy.js';
 const US = 1000;
 
 export function buildPhyLink(sim, opts = {}) {
+  resolveScenarioConfig('phy_link', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   const link = sim.link;

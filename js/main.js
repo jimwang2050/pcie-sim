@@ -1,3 +1,4 @@
+import { SCENARIOS, clampScenarioConfig, resolveScenarioConfig } from './scenarios/registry.js';
 /**
  * UI 入口：控制条、渲染调度与事件跟随逻辑。
  *
@@ -120,6 +121,22 @@ function currentConfig() {
   };
 }
 
+const MODE_TEXT = { auto: '自动', nonflit: 'Non-Flit', flit: 'Flit' };
+
+function writeConfigToControls(cfg) {
+  elGen.value = String(cfg.gen);
+  elWidth.value = String(cfg.width);
+  elMode.value = cfg.mode;
+}
+
+function describeChanges(changes) {
+  return changes.map(({ field, from, to }) => {
+    if (field === 'gen') return `Gen${from} → Gen${to}`;
+    if (field === 'width') return `x${from} → x${to}`;
+    return `${MODE_TEXT[from] ?? from} → ${MODE_TEXT[to] ?? to}`;
+  }).join('，');
+}
+
 const SUBTITLES = {
   link_training: 'M1 · 上电复位 → 链路训练 → L0',
   ltssm_pm: 'LTSSM 电源管理 · L0s / L1.0–1.2 / L2 唤醒 + 热插拔',
@@ -170,10 +187,10 @@ const SCENARIO_SUMMARY = {
 
 function buildScenario(cfg) {
   if (scenarioKey === 'ltssm_pm') {
-    return buildLtssmPm(sim, { gen: cfg.gen, width: cfg.width });
+    return buildLtssmPm(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'phy_link') {
-    return buildPhyLink(sim, { gen: cfg.gen, width: cfg.width });
+    return buildPhyLink(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'loopback_bert') {
     return buildLoopbackBert(sim, {
@@ -181,31 +198,31 @@ function buildScenario(cfg) {
     });
   }
   if (scenarioKey === 'mem_read') {
-    return buildMemRead(sim, { gen: cfg.gen, width: cfg.width });
+    return buildMemRead(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'mem_write') {
-    return buildMemWrite(sim, { gen: cfg.gen, width: cfg.width });
+    return buildMemWrite(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'msi_int') {
-    return buildMsiInt(sim, { gen: cfg.gen, width: cfg.width });
+    return buildMsiInt(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'aer_error') {
-    return buildAerError(sim, { gen: cfg.gen, width: cfg.width });
+    return buildAerError(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'dpc_rpio') {
-    return buildDpcRpio(sim, { gen: cfg.gen, width: cfg.width });
+    return buildDpcRpio(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'ats') {
-    return buildAts(sim, { gen: cfg.gen, width: cfg.width });
+    return buildAts(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'pm_dp') {
-    return buildPmDp(sim, { gen: cfg.gen, width: cfg.width });
+    return buildPmDp(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   if (scenarioKey === 'flit_gen6') {
     return buildFlitGen6(sim, { width: cfg.width });
   }
   if (scenarioKey === 'enumeration') {
-    return buildEnumeration(sim, { gen: cfg.gen, width: cfg.width });
+    return buildEnumeration(sim, { gen: cfg.gen, width: cfg.width, mode: cfg.mode });
   }
   return buildLinkTraining(sim, cfg);
 }
@@ -263,12 +280,23 @@ function reset() {
   closeModal(false);
   pinnedId = null;
   modalMode = 'event';
-  if (scenarioKey === 'flit_gen6') elGen.value = '6';
-  const cfg = currentConfig();
+  const capability = SCENARIOS[scenarioKey];
+  // 切换场景/速率后把选择收敛到最近合法组合，避免界面停在无法播放的状态。
+  const { config: cfg, changes } = clampScenarioConfig(scenarioKey, currentConfig());
+  if (changes.length) writeConfigToControls(cfg);
+  for (const option of elGen.options) option.disabled = !capability.gens.includes(Number(option.value));
+  for (const option of elMode.options) {
+    option.disabled = option.value !== 'auto' && (!capability.modes.includes(option.value)
+      || (cfg.gen === 6 && option.value === 'nonflit'));
+  }
+  const adjustNote = changes.length ? `已自动调整 ${describeChanges(changes)} · ` : '';
+  const effective = resolveScenarioConfig(scenarioKey, cfg);
+  $('capabilityNote').textContent = `${adjustNote}生效：Gen${effective.gen} x${effective.width} · ${effective.effectiveMode === 'flit' ? 'Flit' : 'Non-Flit'} · ${capability.note}`;
+  btnRun.disabled = false;
   sim.reset(cfg);
   const info = buildScenario(cfg);
   selectedRow = info.defaultRow !== undefined ? info.defaultRow : 'STATE';
-  elMode.disabled = scenarioKey !== 'link_training';
+  elMode.disabled = capability.modes.includes('auto');
   elGen.disabled = scenarioKey === 'flit_gen6';
   $('patternLabel').hidden = scenarioKey !== 'loopback_bert';
   $('lpbkLabel').hidden = scenarioKey !== 'loopback_bert';
@@ -281,7 +309,7 @@ function reset() {
   timeline.setSim(sim);
   flowView.setSim(sim, scenarioKey);
   renderAll(true);
-  $('status').dataset.note = `已生成 ${info.totalSteps} 个仿真步`;
+  $('status').dataset.note = `${adjustNote}已生成 ${info.totalSteps} 个仿真步`;
 }
 
 function openModal(id) {
@@ -299,14 +327,14 @@ function openCompare() {
   modalMode = 'compare';
   $('modalTitle').textContent = 'Flit / Non-Flit 模式差异';
   modalBody.innerHTML = `<table class="compare">
-    <thead><tr><th>维度</th><th>Non-Flit（Gen1–5）</th><th>Flit（Gen6）</th></tr></thead>
+    <thead><tr><th>维度</th><th>Non-Flit（Gen1–5）</th><th>Flit（64 GT/s 必须，低速可选）</th></tr></thead>
     <tbody>
       <tr><td>适用速率</td><td>2.5 – 32 GT/s</td><td>64 GT/s 强制；低速率双方支持时可选</td></tr>
-      <tr><td>编码</td><td>8b/10b 或 128b/130b</td><td>1b/1b（PAM4）+ FEC</td></tr>
+      <tr><td>编码</td><td>8b/10b 或 128b/130b</td><td>按速率使用 8b/10b、128b/130b 或 64 GT/s 的 1b/1b（PAM4）</td></tr>
       <tr><td>数据单元</td><td>TLP / DLLP 连续数据流</td><td>固定 256B Flit</td></tr>
       <tr><td>成帧</td><td>STP / END 帧定界符</td><td>无 STP/END，按 Flit 边界解析</td></tr>
-      <tr><td>链路保护</td><td>每 TLP：LCRC + 12bit 序列号</td><td>每 Flit：DLP 6B + 双份 CRC-32 + FEC 3 组</td></tr>
-      <tr><td>错误处理</td><td>LCRC 错 → 重传整个 TLP</td><td>FEC 纠正 ≤2bit；不可纠 → CRC 失败 → 重传整个 Flit</td></tr>
+      <tr><td>链路保护</td><td>每 TLP：LCRC + 12bit 序列号</td><td>每 Flit：DLP 6B + 8B CRC（示意模型未实现） + FEC 3 组</td></tr>
+      <tr><td>错误处理</td><td>LCRC 错 → 重传整个 TLP</td><td>FEC 符号级纠错 → CRC 校验；无效 Flit 按规则重放（本模型为预设结果）</td></tr>
       <tr><td>重传单位</td><td>以 TLP 为单位的 Ack/Nak</td><td>以 Flit 为单位的 Ack/Nak 与重放</td></tr>
       <tr><td>对齐与有序集</td><td>COM / SKP / TS1 / TS2</td><td>SDS / EIEOS / SKP + Flit 对齐</td></tr>
       <tr><td>编码开销</td><td>8b/10b ≈20%；128b/130b ≈1.5%</td><td>1b/1b 无编码开销；Flit 保护 ≈7.8%</td></tr>
@@ -1337,6 +1365,7 @@ function renderAll(follow = false) {
   }
   updateTargetChip();
   updateStatus();
+  btnRun.disabled = false;
   btnStep.disabled = running || sim.finished;
   btnBack.disabled = running || sim.history.length === 0;
   btnRun.textContent = running ? '暂停' : (sim.finished ? '重新运行' : '运行');
@@ -1350,6 +1379,7 @@ function updateStatus() {
   const speedText = elSpeed.selectedOptions[0] ? elSpeed.selectedOptions[0].textContent : '';
   $('status').textContent = `t = ${(sim.clock / 1000).toFixed(1)} µs`
     + ` · 事件 ${sim.events.length}`
+    + ` · 可回退 ${sim.history.length}/200 步（最早 t=${((sim.history[0]?.time ?? sim.clock) / 1000).toFixed(1)} µs）`
     + ` · 阶段 ${phase}`
     + (speedText ? ` · 速度 ${speedText}` : '')
     + (note ? ` · ${note}` : '');

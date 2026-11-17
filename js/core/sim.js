@@ -31,6 +31,14 @@ function cloneValue(v) {
   return v;
 }
 
+function freezeValue(v) {
+  if (v && typeof v === 'object' && !ArrayBuffer.isView(v)) {
+    for (const child of Object.values(v)) freezeValue(child);
+    Object.freeze(v);
+  }
+  return v;
+}
+
 export class Sim {
   constructor() {
     this.scheduler = new Scheduler();
@@ -55,6 +63,8 @@ export class Sim {
     this.durationNs = 1;
     this.listeners = new Set();
     this.finished = false;
+    this.scenarioState = {};
+    this.stopReason = null;
     this.rows = [
       { key: 'STATE', label: 'LTSSM 状态' },
       { key: 'RC.PHY', label: 'RC · PHY' },
@@ -69,6 +79,8 @@ export class Sim {
     this.currentPhase = null;
     this.durationNs = 1;
     this.finished = false;
+    this.scenarioState = {};
+    this.stopReason = null;
     this.link.configure(config);
     this.link.reset();
     this.config = new ConfigSpace();
@@ -105,6 +117,8 @@ export class Sim {
       currentPhaseIndex: this.phases.indexOf(this.currentPhase),
       durationNs: this.durationNs,
       finished: this.finished,
+      scenarioState: cloneValue(this.scenarioState),
+      stopReason: this.stopReason,
       rows: cloneValue(this.rows),
       link: {
         gen: this.link.gen,
@@ -214,6 +228,8 @@ export class Sim {
       : null;
     this.durationNs = s.durationNs;
     this.finished = s.finished;
+    this.scenarioState = cloneValue(s.scenarioState);
+    this.stopReason = s.stopReason;
     this.rows = cloneValue(s.rows);
 
     Object.assign(this.link, {
@@ -304,6 +320,8 @@ export class Sim {
     };
     if (event.t_ns < 0) event.t_ns = 0;
     event.phase = this.currentPhase ? this.currentPhase.key : null;
+    freezeValue(event.packet = cloneValue(event.packet));
+    freezeValue(event);
     this.events.push(event);
     if (this.currentPhase) this.currentPhase.events += 1;
     this.emitSignal('event', event);
@@ -324,11 +342,13 @@ export class Sim {
 
   /** 跑到队列耗尽（测试与静态导出用）。 */
   runToEnd(limit = 100000) {
+    if (!Number.isInteger(limit) || limit < 1) throw new RangeError('步数上限必须为正整数');
     let n = 0;
     while (this.scheduler.pending && n < limit) {
       this.stepOnce();
       n += 1;
     }
+    this.stopReason = this.scheduler.pending ? 'step-limit' : 'queue-empty';
     return n;
   }
 

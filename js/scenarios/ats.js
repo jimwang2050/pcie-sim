@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：ATS（Address Translation Services）+ PRI（Page Request Interface）。
  *
@@ -121,6 +122,7 @@ function pageReqPacket({ response = false, prg = 0, code = 0 } = {}) {
 }
 
 export function buildAts(sim, opts = {}) {
+  resolveScenarioConfig('ats', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   setupLinkL0(sim, gen, width, [

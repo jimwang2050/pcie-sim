@@ -1,0 +1,17 @@
+{
+  "revision": "PCIe Base 6.2 v1.0",
+  "source": "C2 §2.2.1.1, §2.2.5.1, §2.2.7.1, §2.2.9.1; MindShare Ch05 configuration/memory/completion field tables",
+  "method": "Hand-specified protocol DWORDs, independent of the encoder; internal bytes are little-endian within each DWORD. Not on-wire capture bytes.",
+  "vectors": [
+    {"id":"cfg-rd0","builder":"cfg","input":{"requester":4660,"tag":86,"bdf":256,"reg":16},"dwords":["04000001","1234560f","01000010"]},
+    {"id":"cfg-wr0","builder":"cfg","input":{"write":true,"requester":4660,"tag":86,"bdf":256,"reg":16,"data":305419896},"dwords":["44000001","1234560f","01000010","12345678"]},
+    {"id":"cfg-rd1","builder":"cfg","input":{"type1":true,"requester":4660,"tag":86,"bdf":256,"reg":16},"dwords":["05000001","1234560f","01000010"]},
+    {"id":"cfg-wr1","builder":"cfg","input":{"type1":true,"write":true,"requester":4660,"tag":86,"bdf":256,"reg":16,"data":305419896},"dwords":["45000001","1234560f","01000010","12345678"]},
+    {"id":"mrd-3dw","builder":"mem","input":{"requester":4660,"tag":86,"address":2147487744,"lengthDw":32},"dwords":["00000020","123456ff","80001000"]},
+    {"id":"mwr-3dw","builder":"mem","input":{"write":true,"requester":4660,"tag":86,"address":2147487744,"lengthDw":2,"dataDws":[3735928559,287454020]},"dwords":["40000002","123456ff","80001000","deadbeef","11223344"]},
+    {"id":"mrd-4dw","builder":"mem","input":{"is64":true,"requester":4660,"tag":86,"address":6442455040,"lengthDw":1},"dwords":["20000001","1234560f","00000001","80001000"]},
+    {"id":"mwr-4dw","builder":"mem","input":{"is64":true,"write":true,"requester":4660,"tag":86,"address":6442455040,"lengthDw":2,"dataDws":[3735928559,287454020]},"dwords":["60000002","123456ff","00000001","80001000","deadbeef","11223344"]},
+    {"id":"cpl","builder":"cpl","input":{"requester":4660,"tag":86,"completer":256,"byteCount":4},"dwords":["0a000000","01000004","12345600"]},
+    {"id":"cpld","builder":"cpl","input":{"requester":4660,"tag":86,"completer":256,"byteCount":8,"dataDws":[3735928559,287454020]},"dwords":["4a000002","01000008","12345600","deadbeef","11223344"]}
+  ]
+}

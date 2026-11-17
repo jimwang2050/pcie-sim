@@ -305,8 +305,8 @@ function flitView(packet) {
     ['Flit 序号', `#${packet.seq}`],
     ['TLP 数', String(packet.packed.length)],
     ['已用 / 填充', `${packet.payloadBytes}B / ${packet.padding}B`],
-    ['FEC', fecText],
-    ['CRC', check.crc],
+    ['FEC 预设结果', fecText],
+    ['CRC 预设结果', check.crc],
     ['Flit 重传', check.retry ? '需要' : '否'],
     ['编码', encodingOf(packet.gen)],
   ].map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
@@ -328,7 +328,8 @@ function flitView(packet) {
       <dl class="kv">${kv}</dl>
     </div>
     <div class="insp-section">
-      <h3>TLP 打包</h3>
+      <p class="hint">${esc(packet.modelNote || '布局/故障示意，未执行标准校验')}</p>
+      <h3>TLP 打包示意</h3>
       <div class="table-scroll">
         <table class="symbols">
           <colgroup><col style="width:86px"><col style="width:58px"><col style="width:60px"><col></colgroup>
@@ -336,7 +337,7 @@ function flitView(packet) {
           <tbody>${tlpRows}</tbody>
         </table>
       </div>
-      <p class="hint">Flit 内无 STP/END；接收端按 DLP 中的 TLP 数与各 TLP 长度解析。</p>
+      <p class="hint">Flit 内无 STP/END。本图按预设列表展示，使用 NFM TLP 头占位，DLP 数量字段不是标准位域。</p>
     </div>
     <div class="insp-section">
       <h3>256B Flit 分段</h3>
@@ -351,10 +352,10 @@ function flitView(packet) {
         </table>
       </div>
       <div class="fec-groups">${fecGroups}</div>
-      <p class="hint">FEC 3 组可纠正 ≤2 bit；超过后 CRC 失败，触发 Flit 级重传（Non-Flit 为每 TLP LCRC + Ack/Nak）。</p>
+      <p class="hint">FEC 为三路交织的符号级纠错；接收侧先 FEC 后 CRC。当前仅展示预设故障结果，不执行真实 CRC/FEC；Non-Flit 以 TLP 为重传单位。</p>
     </div>
     <div class="insp-section">
-      <h3>前 48 字节</h3>
+      <h3>前 48 字节（示意，非线上编码）</h3>
       <div class="hexrow">${hex}</div>
     </div>`;
 }
@@ -369,7 +370,7 @@ function tlpView(packet) {
         <div class="hexrow">${packet.dataDws.map((dw) => `<span class="byte">0x${(dw >>> 0).toString(16).toUpperCase().padStart(8, '0')}</span>`).join('')}</div>
       </div>`
     : '';
-  return `
+  return `<p class="hint">逻辑 DWORD 顺序，DWORD 内小端字节；非线上抓包字节流。${packet.fidelity === 'schematic' ? '本消息为教学示意，未实现标准完整头。' : 'Non-Flit 字段模型（选定子集）'}</p>
     <div class="insp-section">
       <h3>TLP 字节（${packet.headerLen}B 头 + ${packet.dataBytes.length}B 数据）</h3>
       <div class="hexrow">${bytes}</div>

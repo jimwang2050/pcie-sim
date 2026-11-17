@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：Loopback + BERT —— Internal 与 External 是两套「互相独立」的测试配置。
  *
@@ -14,6 +15,7 @@ import { formatBits, patternInfo } from '../core/bert.js';
 const US = 1000;
 
 export function buildLoopbackBert(sim, opts = {}) {
+  resolveScenarioConfig('loopback_bert', { ...opts, mode: opts.transportMode ?? 'auto' });
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   const pattern = opts.pattern || 'PRBS31';

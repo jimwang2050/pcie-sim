@@ -333,13 +333,24 @@ export class Timeline {
     this.autoTip.hidden = false;
     const t = this.autoTip.getBoundingClientRect();
     let left = a.left + a.width / 2 - t.width / 2;
-    left = Math.max(8, Math.min(left, window.innerWidth - t.width - 8));
+    const minLeft = Math.max(8, s.left + 4);
+    const maxRight = Math.min(window.innerWidth - 8, s.right - 4);
+    const minTop = Math.max(8, s.top + 4);
+    const maxBottom = Math.min(window.innerHeight - 8, s.bottom - 4);
+    // Auto details must stay inside the timeline, never cover its toolbar or
+    // another panel. The inspector remains available when there is no room.
+    if (t.width > maxRight - minLeft || t.height > maxBottom - minTop) {
+      this.autoTip.hidden = true;
+      return;
+    }
+    left = Math.max(minLeft, Math.min(left, maxRight - t.width));
     let top = a.top - t.height - 12;
     let placement = 'above';
-    if (top < 8) {
+    if (top < minTop) {
       top = a.bottom + 12;
       placement = 'below';
     }
+    top = Math.max(minTop, Math.min(top, maxBottom - t.height));
     this.autoTip.dataset.placement = placement;
     this.autoTip.style.left = `${left}px`;
     this.autoTip.style.top = `${top}px`;

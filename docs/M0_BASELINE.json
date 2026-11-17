@@ -1,0 +1,89 @@
+{
+  "capturedDate": "2026-11-17",
+  "applicationCommit": "0de9a3ca506c9d9f4ab49836bcfefaf693e70ca8",
+  "branch": "upgrade/m0-m1-accuracy",
+  "baselineTests": {
+    "passed": 50,
+    "failed": 0
+  },
+  "executionProbe": {
+    "runs": 390,
+    "meaning": "Execution smoke only; not protocol validation"
+  },
+  "applicationFiles": {
+    ".gitignore": "6c7d15d2ab1a0b51ebcae7e88b9ad01f0713d0833bc2dbe8f3bcc7a81b66b344",
+    ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "README.md": "7a11a95852279ac5c0a63382e6925a41012124477a01938877d66c8a4bf994ab",
+    "css/style.css": "23a0ec18d19c633e2e0c9b5847cfb2dbbdb9a2239dcd4265b6df8a105be7e634",
+    "index.html": "85c27c5a06f8f3371250e69fc56904f4a69203ecf3bc6aa84396f6de9b808b9b",
+    "js/core/aer.js": "71c2c47f6c815f5c67bb65a5a7b085dc74a39e6d39afdf97d4e947bea60f6d01",
+    "js/core/ats.js": "81363b9a5a35cc08ebddee1ce9f583400288fe759e88a9f20730e8849d65fc8e",
+    "js/core/bert.js": "e64f408738bfab830bb4652935b3e910c3563705d2221f32adc0ee6ca1b66a7b",
+    "js/core/config.js": "738231e342738ebe0b0449e60aee2f6acdbd5608d770b7211b601af0b2fd0c65",
+    "js/core/dllp.js": "420fb3a92da86b9af57bbe10f2ed9d98cf6a6b679536cf00675f0e47b6f144ba",
+    "js/core/dpc.js": "2996ca09b891782d1eb9c64b0253157b777986325b7e3aefc5bd2b574b21addd",
+    "js/core/event_info.js": "6e425febe0543aa1f9783b274b7c635af58dcd22dd8450667a1c06ab8720680c",
+    "js/core/fc.js": "593e4a6ae00fe26bfdeb041f503064db0ff38b8d0122479591e0427a83184dde",
+    "js/core/flit.js": "081808bd35784ddc797e7a6654ebdf08ef7eba5f93edc7f53969a217b3e8c3aa",
+    "js/core/hotplug.js": "86e5c3acf855d7fabbe60ea0b9a862b0c397e6091c9aa99b45a34b39d87a067a",
+    "js/core/link.js": "28d49f5a219daae2038ee6dafaa3a71ef6510dcd09b6fcc0f391ffb65448e703",
+    "js/core/loopback.js": "1004753e5dca1bbd2d486c22e4a5ca8a97179c5efc04bfa8d4f1dc1f09f21e1c",
+    "js/core/ltssm_info.js": "b5ccf9af433564f5b7bb86c61d488ec7e0803f31ab530aee973c550ffcc45c53",
+    "js/core/memory.js": "018e199bb7367d91a2c703366a6ceab34d093d8dbfb69d53f70c159c0cae022a",
+    "js/core/msi.js": "4efa71cf27312f8fc896bdcd36db0184b4db62bf3cbcee4cf9f9b43a83a8a89c",
+    "js/core/packet.js": "50d361443edce6b0563b08233aa6b17913ad35b9a1458f37dd1bcdad79b2cef1",
+    "js/core/phy.js": "01f14c12c301797c79efac5b050e7a567b28e13d85152930cc0543bfa751b8a9",
+    "js/core/playback.js": "db2e9eb6a679766be9611b51d7706682f07d309071488701262f84a8f553d138",
+    "js/core/pm.js": "d57044805e186111108471f70e6d22dc58ada1b27d02308bbc554a6bf49dc05a",
+    "js/core/scheduler.js": "f10dee3cd085a5174e91f86866b1278558254c1cbc76470d92b909a9b8093969",
+    "js/core/sim.js": "b57e31c2c95ec5eba86a208c09cbd5e0fd81f1ed975285fcd2688ff791032d51",
+    "js/core/tlp.js": "c9209981601887efd1a2611248a5ee5f802e597c0f73c376de16f8605c61f189",
+    "js/main.js": "b73c4d0a361377cc13f7f3d6569fc685664b5c56c92012d15f64be4106877317",
+    "js/scenarios/aer_error.js": "6057dd4111ec710174dde9229fa938cc6e0e185b1e1a6efb57d2ee7c5aca157d",
+    "js/scenarios/ats.js": "b1cd40c49ff186dacc5f86bd06a7efc9d40a573376b8b93301f47c105e401a2b",
+    "js/scenarios/dpc_rpio.js": "c031611982e92a704082c8e7275029d5d55de56824f8e7220e1ba7d2677e36e8",
+    "js/scenarios/enumeration.js": "1adfffc1126b6142b175da8e9ade1d7f49721064bfe4b3868cab61585ba8b422",
+    "js/scenarios/flit_gen6.js": "dee4bebc48f21c00656f6b3acba36626ec77f450787b950c61ed1056ade01d3a",
+    "js/scenarios/link_training.js": "6a4341b20bf60949aedbdf2b609060c116034d82841eb1e39c06ee860fdf9b56",
+    "js/scenarios/loopback_bert.js": "f315827a422cc3dfd75ce67b77088b18f94cb976ac89bddafc574641e89e1a3d",
+    "js/scenarios/ltssm_pm.js": "4bb12cc29a5e030a6a44706aba9ac83a9ca7ad4b8dfaed65089f0b741c29b1ea",
+    "js/scenarios/mem_common.js": "67a619a7aac10635e7064be66b18cbd6582ae52c398b215c6a806b513760f2c4",
+    "js/scenarios/mem_read.js": "62c33d129a550033dd621fab80fdae6fe8dd922bc6e03c51093a765aa77f3ebc",
+    "js/scenarios/mem_write.js": "e3cc83a5cd84557c72619270e7ad15c83c85efac2474e56a2924ef4711200b74",
+    "js/scenarios/msi_int.js": "ec00e99bf41a01b38032ae3b785eb9470c69c35e3c95cf6565c1c64cc87e6041",
+    "js/scenarios/phy_link.js": "deca8cc2b4af400aa8c7bcd3cef3ecdbd5a68d8fc6a6f061850201daa1e9277a",
+    "js/scenarios/pm_dp.js": "519019c8299dc70b09d293189d017bd09623ef7ae9387e332ff9c0de08266ff2",
+    "js/ui/cfg_layout.js": "692c76e84c25c511ce8d59012f93bdb9da01b56e431bfdad3d5c28c49514b8d0",
+    "js/ui/eye.js": "31fa3c435fb68805e09f3dedbe57cd5a032bb502a6075677ce62d7ec9dc0ca3b",
+    "js/ui/flowview.js": "b4aef833bad73d4a200d9d729e1a5de479d58dd72ec7d780c6fbf8956a4079ea",
+    "js/ui/models.js": "3ed2a70636879dddc9e9a0a48f39cce4dc6f5b50d9376b52ad3f5cb427fbc8d3",
+    "js/ui/panels.js": "f6804dfa63e87708ec0f9754d4766b094b8a8eaf6597d3e567e2a68dbfdfe733",
+    "js/ui/timeline.js": "4cbad2274c6bc9f9a83b0650c229780249c5c73582848f314306442610932dd1",
+    "js/ui/topology.js": "0db4b7c1c574006219cdebe403044593ee36c3af3ca066ed7e83efba9eb7347b",
+    "package.json": "b398d9901ba34c5bfc64e861f6ae6e44b461119462a1c3cfd18b9abebd3826cf",
+    "tests/link.test.js": "bf15b87d0cf872a2f8aa0aa9b757f97b212e040cf17b439cd5450809a7540041"
+  },
+  "sources": {
+    "S62": {
+      "commit": "24ee004dc677155b2e60fd88725d09f7f4a02851",
+      "files": {
+        "README.md": "e6a5feee1a573c3c2bc8baa8f348cc01643fda1fcdd5c5292b43a35ae57d9a31",
+        "PCIe6.2_Spec_ch07_软件初始化与配置_Part_A_7_1-7_8.md": "dc981860a4cd30a75c97a3e247613123b247e36554d3c1d9ee31d6b3cf779619",
+        "PCIe6.2_Spec_ch07_Software_Initialization_and_Configuration_软件初始化与配置.md": "1c912f79284d5cafd7da94bd89961bc25d41eee10ae161e62c79252a88206a35",
+        "PCIe6.2_Spec_ch04_Physical_Layer_Logical_Block_物理层逻辑块.md": "74ccb88cfa338498fb153f2c89eb6d8829bb4c63b4c65b87ea055f21b2c693cb",
+        "PCIe6.2_Spec_ch02_Transaction_Layer_Specification_事务层规范.md": "cc7db2e23096377ddc4edd7af5dbc4eff6f40211420f2bb831489ee1b52a9d61",
+        "PCIe6.2_Spec_ch07_软件初始化与配置_Part_B_7_9-7_30.md": "a37a5bc8e78df3ebe6e62a73260b8d806579c15c5f89b24ff210315c35def453",
+        "PCIe6.2_Spec_ch03_Data_Link_Layer_Specification_数据链路层规范.md": "ec3d31418c5cfff64dacb8c5e4684878713fb97e0a7fcedcb10096f7719b2f55"
+      }
+    },
+    "MS3": {
+      "commit": "afdb96d40509a29ef86167db94d71f7181d66230",
+      "files": {
+        "QUALITY_REPORT.md": "5c89b1349922f459b06dca8071d880882698b4f9e42dbce21d40ea0f4acd1ee2",
+        "Ch05_TLP_Elements.md": "d88aaff41cc17d0a844871f8dcfc902f4afeefd1281a3e29cd541341737d3f79",
+        "Ch06_Flow_Control.md": "c2abccc7af85d91d32a15a3d418640ac199147acbe728f1af694ffc94c2d3a7a",
+        "Ch10_AckNak_Protocol.md": "8d9a480f5e6b27b2d3e5a62866f7afe1574e11908d2bc164e6d3407c411345aa"
+      }
+    }
+  }
+}

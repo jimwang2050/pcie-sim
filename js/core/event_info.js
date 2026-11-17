@@ -24,7 +24,7 @@ export const LAYER_INFO = {
   },
   FLIT: {
     name: 'Flit 层（Gen6）',
-    physics: 'Gen6 以 256B Flit 为固定传输单元，Flit 内打包多个 TLP/DLLP，并用 FEC + 双份 CRC 保护；本层事件是 Flit 级组包、纠错与重传。',
+    physics: 'Gen6 以 256B Flit 为固定传输单元，Flit 内打包多个 TLP/DLLP，并用 FEC + 8B CRC 保护；本层事件是 Flit 级组包、纠错与重传。',
     role: '替代 Non-Flit 的逐 TLP 保护，降低编码开销并提升纠错能力。',
   },
   STATE: {
@@ -263,7 +263,7 @@ const ORDERED = {
   ENUM: { name: '枚举步骤', physics: '软件读取 Vendor/Device ID、探测 BAR 大小并分配基址。', role: '让操作系统识别并驱动设备。' },
   FLIT: {
     name: '256B Flit',
-    physics: '固定长度传输单元，内含多个 TLP/DLLP、DLP 与双份 CRC，并用 FEC 纠正 ≤2 bit 错误。',
+    physics: '固定长度传输单元，内含多个 TLP/DLLP、DLP 与8B CRC，并使用三路交织 FEC 符号级纠错；本模型为布局及故障预设示意。',
     role: 'Gen6 的链路层传输与重传粒度。',
   },
   FEC: {

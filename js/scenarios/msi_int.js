@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：MSI / MSI-X 中断。
  * 通过 Posted MWr 写入 RC 的 MSI 地址；MSI-X 每个表项有独立地址/数据/mask。
@@ -8,6 +9,7 @@ import {
 } from './mem_common.js';
 
 export function buildMsiInt(sim, opts = {}) {
+  resolveScenarioConfig('msi_int', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   setupLinkL0(sim, gen, width, [

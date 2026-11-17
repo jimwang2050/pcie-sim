@@ -433,7 +433,7 @@ export function renderCfgLayout(el, config, type = 'type0') {
     </div>`;
   }).join('');
 
-  el.innerHTML = `<div class="cfg-layout">
+  el.innerHTML = `${type === 'type1' ? '<p class="hint">Type 1 为参考布局与示例复位值，未实现桥设备行为。</p>' : '<p class="hint">Type 0 为选定寄存器行为模型；未实现的能力与字段仅作参考说明。</p>'}<div class="cfg-layout">
     <div class="cfg-row cfg-ruler">
       <div class="cfg-off">Offset</div>
       <div class="cfg-dw">DWORD</div>

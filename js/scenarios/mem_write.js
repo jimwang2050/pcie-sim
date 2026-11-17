@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：内存写（MWr，Posted）+ 写后读回。
  * 展示 P 信用消耗 / UpdateFC 归还，以及 Posted 事务无 Completion。
@@ -15,6 +16,7 @@ const WRITE_DWS = [
 ];
 
 export function buildMemWrite(sim, opts = {}) {
+  resolveScenarioConfig('mem_write', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   setupMemScenario(sim, gen, width);
@@ -62,7 +64,7 @@ export function buildMemWrite(sim, opts = {}) {
   });
   const cpl = buildCpl({
     requester: RC_ID, completer: EP_ID, tag: rtag,
-    dataDws: WRITE_DWS.slice(), byteCount: 0, lowerAddress: 0,
+    dataDws: WRITE_DWS.slice(), byteCount: 32, lowerAddress: 0,
   });
 
   tlpPair(sim, t1, 'RC', 'EP', rd,
@@ -71,7 +73,7 @@ export function buildMemWrite(sim, opts = {}) {
     () => sim.fc.consume('RC', 'NP_Hdr', 1));
   ackPair(sim, t1 + 4 * US, 'EP', 'RC', `MRd Tag=${rtag}`);
   tlpPair(sim, t1 + 12 * US, 'EP', 'RC', cpl,
-    `CplD  ByteCount=0  Tag=${rtag}  Data[0]=${hex32(WRITE_DWS[0])}`,
+    `CplD  ByteCount=32  Tag=${rtag}  Data[0]=${hex32(WRITE_DWS[0])}`,
     '读回数据与写入一致；消耗 Cpl_Hdr 1 + Cpl_Data 2',
     () => {
       sim.fc.consume('EP', 'Cpl_Hdr', 1);

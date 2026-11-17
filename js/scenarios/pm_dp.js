@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：D 状态（软件，PMCSR 可见）/ P 状态（PHY 侧 PIPE PowerDown 编码）。
  * D0(P0/P1/P2) → D1 → D0 → D3hot(PME 唤醒) → D3cold → Fundamental Reset。
@@ -6,6 +7,7 @@ import { buildCfg, buildMsg } from '../core/tlp.js';
 import { setupLinkL0, tlpPair, ackPair, US, RC_ID, EP_ID } from './mem_common.js';
 
 export function buildPmDp(sim, opts = {}) {
+  resolveScenarioConfig('pm_dp', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   setupLinkL0(sim, gen, width, [

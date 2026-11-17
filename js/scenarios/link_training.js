@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：上电复位 → 链路训练 → L0（Gen1–Gen5）。
  *
@@ -17,6 +18,7 @@ const DETECT_QUIET = 120 * US;
 const DETECT_ACTIVE = 60 * US;
 
 export function buildLinkTraining(sim, opts = {}) {
+  resolveScenarioConfig('link_training', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   const mode = opts.mode ?? 'auto';

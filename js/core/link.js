@@ -4,6 +4,8 @@
  */
 import { GEN_RATE, RATE_BY_GEN, encodingOf, dataRateGBs } from './packet.js';
 
+export const LINK_WIDTHS = Object.freeze([1, 2, 4, 8, 16]);
+
 export const LTSSM_TOP = [
   { key: 'Detect', cn: '检测', desc: '电气检测链路远端是否存在接收器' },
   { key: 'Polling', cn: '轮询', desc: 'TS1/TS2 建立位锁与符号/块锁' },
@@ -48,6 +50,8 @@ export class LinkModel {
   }
 
   configure({ gen = 3, width = 8, mode = 'auto' }) {
+    if (![1, 2, 3, 4, 5, 6].includes(gen) || !LINK_WIDTHS.includes(width) || !['auto', 'flit', 'nonflit'].includes(mode)) throw new RangeError('无效链路配置');
+    if (gen === 6 && mode === 'nonflit') throw new RangeError('64 GT/s 必须使用 Flit');
     this.targetGen = gen;
     this.gen = gen;
     this.width = width;

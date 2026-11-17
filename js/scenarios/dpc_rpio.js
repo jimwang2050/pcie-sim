@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：DPC（Downstream Port Containment）+ RP PIO 错误隔离与恢复。
  *
@@ -14,6 +15,7 @@ import {
 } from './mem_common.js';
 
 export function buildDpcRpio(sim, opts = {}) {
+  resolveScenarioConfig('dpc_rpio', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   setupLinkL0(sim, gen, width, [

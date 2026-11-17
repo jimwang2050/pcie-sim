@@ -1,3 +1,4 @@
+import { resolveScenarioConfig } from './registry.js';
 /**
  * 场景：AER 错误上报（Correctable / Non-Fatal / Fatal）+ Hot Reset 恢复。
  */
@@ -7,6 +8,7 @@ import {
 } from './mem_common.js';
 
 export function buildAerError(sim, opts = {}) {
+  resolveScenarioConfig('aer_error', opts);
   const gen = opts.gen ?? 3;
   const width = opts.width ?? 8;
   setupLinkL0(sim, gen, width, [

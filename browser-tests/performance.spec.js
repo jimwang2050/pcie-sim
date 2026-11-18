@@ -191,3 +191,30 @@ test('公式与计量边界包含符号定义、单位与物理含义', async ({
   await expect(details).toContainText('计量边界');
   await expect(details).toContainText('半开区间');
 });
+
+test('深色 / 浅色模式可切换并记住选择', async ({ page }) => {
+  await page.goto('./performance.html');
+  const html = page.locator('html');
+  if (await html.getAttribute('data-theme') === 'light') {
+    await page.getByRole('button', { name: '深色' }).click();
+  }
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByRole('button', { name: '浅色' })).toBeVisible();
+
+  await page.getByRole('button', { name: '浅色' }).click();
+  await expect(html).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('button', { name: '深色' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('pcie-sim-theme'))).toBe('light');
+
+  await page.reload();
+  await expect(html).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('status')).toContainText('已完成');
+
+  // 浅色模式下弹窗仍应居中可见（body 滤镜不能把 fixed 定位带跑）
+  await page.locator('#topology [data-node="host.DDR"]').first().click();
+  const box = await page.getByRole('dialog').boundingBox();
+  expect(box).not.toBeNull();
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(1001);
+  await page.getByRole('button', { name: '关闭事件浮窗' }).click();
+});

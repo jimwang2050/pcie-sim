@@ -8,6 +8,24 @@ import { groupTrace } from './trace-groups.js';
 const get = id => document.getElementById(id);
 const form = get('controls');
 const status = get('status');
+
+// 深色 / 浅色：与教学页共享 pcie-sim-theme
+const THEME_KEY = 'pcie-sim-theme';
+const themeButton = get('theme-toggle');
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  themeButton.textContent = theme === 'light' ? '深色' : '浅色';
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (error) { /* 本地存储不可用时只改当前页面 */ }
+}
+
+applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+themeButton.addEventListener('click', () => {
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+});
+
 const format = value => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value);
 let worker;
 let result;

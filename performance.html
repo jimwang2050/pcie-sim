@@ -4,12 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PCIe 系统性能实验室</title>
+<script>
+  try {
+    var savedTheme = localStorage.getItem('pcie-sim-theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      document.documentElement.dataset.theme = savedTheme;
+    }
+  } catch (error) { /* 本地存储不可用时保持默认深色 */ }
+</script>
 <link rel="stylesheet" href="css/performance.css">
 <link rel="icon" href="data:,">
 </head>
 <body>
 <main>
-  <nav><a href="index.html">← 协议演示</a><span>PCIe SIM / PERFORMANCE</span></nav>
+  <nav><a href="index.html">← 协议演示</a><span>PCIe SIM / PERFORMANCE</span><button id="theme-toggle" type="button" title="切换深色 / 浅色">浅色</button></nav>
   <header>
     <h1>PCIe 系统性能实验室</h1>
     <p>沿 CPU、DMA、CMN、控制器与物理链路追踪每笔读写，找出限制带宽的节点。</p>

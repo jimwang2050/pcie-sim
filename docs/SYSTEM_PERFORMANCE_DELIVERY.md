@@ -68,7 +68,7 @@ node scripts/perf.mjs simulate --config docs/perf-p2p-duplex.json
 
 - `npm test`：129/129 通过，其中 13 项性能回归，含 25 组路径/配比组合、空载读写手算、末片释放 Tag、Credit 守恒、双端同向争用、截断窗口、RC Bridge 两层预设与逐跳 RTT 对账。
 - `npm run check:site`：65 个文件、2 个入口（`index.html`、`performance.html`），0 警告、0 错误；性能核心由 CLI 与 Node 测试加载。
-- 浏览器：13 场景冒烟 18 条 + 性能页 10 条（Chromium / Firefox / WebKit 三套），其中性能页覆盖 RC Bridge 预设、逐跳延迟构成与拓扑高亮、节点占用条/瓶颈标记、手动覆盖与超限拒绝。
+- 浏览器：13 场景冒烟 18 条 + 性能页 11 条（Chromium / Firefox / WebKit 三套），其中性能页覆盖 RC Bridge 预设、逐跳延迟构成与拓扑高亮、节点占用条/瓶颈标记、1×–32× 播放倍速、手动覆盖与超限拒绝。
 - `matrix --count 256`：20 组全部完成。下表是 Gen4 ×8 示例的整批有效带宽，单位 GB/s；DMA/P2P 为 512 B/操作，CPU BAR 为 4 B/操作。
 
 | 发起路径 | 纯读 | 50:50 | 纯写 |

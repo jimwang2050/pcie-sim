@@ -80,11 +80,12 @@ details { margin-top: 12px; }
 .timeline-row.trace-related { outline-color: #b99165; }
 @keyframes trace-pulse { from { background: #705228; } to { background: #493925; } }
 @media (prefers-reduced-motion: reduce) { .timeline-row.trace-selected { animation: none; } }
-.internal-bus { fill: none; stroke: #5e9cbb; stroke-width: 3; }
+.internal-bus { fill: none; stroke: #6fb4d4; stroke-width: 1.5; }
+.internal-bus.return { stroke: #4a7f9b; }
+.internal-arrow { fill: #6fb4d4; stroke: none; }
 .hardware, .wire { cursor: pointer; }
 .hardware-body { fill: #19364f; stroke: #64a1c2; }
 .hardware-title { fill: #e8f4ff; font-size: 11px; font-weight: 700; }
-.lane-title { font-size: 9px; }
 .hardware.inactive .hardware-body { fill: #17283b; stroke: #466078; }
 .hardware.inactive .hardware-title { fill: #a5b6cc; }
 .hardware[aria-pressed=true] .hardware-body, .hardware:focus-visible .hardware-body { stroke: #ffce83; stroke-width: 2.5; }
@@ -99,7 +100,7 @@ details { margin-top: 12px; }
 .wire-hit { fill: transparent; }
 .wire[aria-pressed=true] .wire-hit, .wire:focus-visible .wire-hit { fill: transparent; stroke: currentColor; stroke-width: 1; stroke-dasharray: 3 3; }
 .wire-direction-arrow { fill: currentColor; stroke: none; }
-.port-label { fill: #d9ecff; font: 700 9px ui-monospace, monospace; }
+.wire-end-label { fill: currentColor; font: 700 9px ui-monospace, monospace; paint-order: stroke; stroke: #0a1525; stroke-width: 3px; }
 .wire-label { fill: #0c1728; }
 .wire-value { fill: currentColor; font-size: 10px; font-weight: 700; }
 .board-legend { display: flex; flex-wrap: wrap; gap: 7px 18px; margin-top: 10px; font-size: 13px; color: var(--muted); }

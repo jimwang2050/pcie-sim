@@ -11,10 +11,12 @@ test('performance lab opens from the teaching page and runs read/write and Gen6 
   await expect(page.locator('#topology [data-node="rc>epA"]')).toHaveAttribute('data-traffic', 'CplD');
   await expect(page.locator('#topology [data-node="epA>rc"]')).toHaveAttribute('data-traffic', 'MRd MWr');
   await expect(page.locator('#topology [data-node="rc>epA"] .wire-direction-arrow')).toHaveCount(1);
-  await expect(page.locator('#topology [data-node="rc.PHY"] .hardware-body.lane')).toHaveCount(2);
-  await expect(page.locator('#topology [data-node="rc.PHY"] .port-label')).toHaveText(['TX', 'RX']);
-  await expect(page.locator('#topology [data-node="epA.PHY"] .hardware-body.lane')).toHaveCount(2);
-  await expect(page.locator('#topology [data-node="epA.PHY"] .port-label')).toHaveText(['RX', 'TX']);
+  await expect(page.locator('#topology [data-node="rc>epA"] .wire-end-label')).toHaveText(['TX', 'RX']);
+  await expect(page.locator('#topology [data-node="epA>rc"] .wire-end-label')).toHaveText(['RX', 'TX']);
+  const buses = await page.locator('#topology .internal-bus:not(.return)').count();
+  expect(buses).toBeGreaterThan(0);
+  await expect(page.locator('#topology .internal-bus.return')).toHaveCount(buses);
+  await expect(page.locator('#topology .internal-arrow')).toHaveCount(buses * 2);
   await expect(page.locator('[data-rtt-link="epA>rc"]')).toHaveText('t₀');
   await expect(page.locator('[data-rtt-link="rc>epA"]')).toHaveText('tCpl');
   await expect(page.locator('#metric-map')).toContainText('RTT 首片 / 末片 P50');

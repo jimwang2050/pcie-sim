@@ -439,6 +439,22 @@ function syncUrlState(cfg) {
   }
 }
 
+/** 显示部署产物版本；本地没有 version.json 时静默跳过。 */
+async function loadBuildInfo() {
+  try {
+    const res = await fetch('./version.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const info = await res.json();
+    const commit = String(info.commit || '').slice(0, 7);
+    const parts = [`构建 v${info.version || '?'}`];
+    if (commit && commit !== 'dev') parts.push(commit);
+    if (info.run) parts.push(`run ${info.run}`);
+    $('buildInfo').textContent = parts.join(' · ');
+  } catch {
+    // 本地静态预览或离线环境没有 version.json
+  }
+}
+
 function openStateInfo(key) {
   const info = findLtssmInfo(key);
   if (!info) return;
@@ -1764,3 +1780,4 @@ document.addEventListener('keydown', (e) => {
 
 applyUrlState();
 reset();
+loadBuildInfo();

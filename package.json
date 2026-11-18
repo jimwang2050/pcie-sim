@@ -1,13 +1,15 @@
 {
   "name": "pcie-sim",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "PCIe 关键流程交互式模拟器（纯前端零依赖）",
   "scripts": {
     "test": "node --test tests/*.test.js",
     "serve": "python3 -m http.server 8123",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "check:site": "node scripts/check-site.mjs",
+    "bench": "node scripts/bench.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1"

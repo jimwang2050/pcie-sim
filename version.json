@@ -1,0 +1,6 @@
+{
+  "version": "0.3.0",
+  "commit": "dev",
+  "builtAt": "local",
+  "note": "本地预览占位；CI 部署时会在产物中重写为真实提交与运行号"
+}

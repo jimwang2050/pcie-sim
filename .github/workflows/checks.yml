@@ -17,6 +17,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm test
+      - run: npm run check:site
   browser:
     needs: test
     runs-on: ubuntu-latest
@@ -26,10 +27,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:browser
-        env:
-          PCIE_BROWSER_CHANNEL: chromium
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, browser]
@@ -43,9 +42,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build static artifact
+        run: |
           mkdir -p _site
           cp -R index.html css js .nojekyll _site/
+          VERSION=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
+          printf '{"version":"%s","commit":"%s","run":"%s","builtAt":"%s"}\n' \
+            "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > _site/version.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

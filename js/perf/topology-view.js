@@ -122,30 +122,39 @@ export function drawTopology(host, budget, simulation, select, format) {
     draw(svg, 'rect', { x: 291, y: 184, width: 265, height: 97, rx: 9, class: 'chip-subgroup' });
     draw(svg, 'text', { x: 301, y: 205, class: 'chip-subtitle' }, 'ROOT COMPLEX / ROOT PORT');
   }
-  const busGap = 2.2;
   for (const [from, to] of edges.values()) {
     const [ax, ay, aw] = nodes[from];
     const [bx, by, bw] = nodes[to];
     const x1 = ax + aw / 2, x2 = bx + bw / 2, y1 = ay + 23, y2 = by + 23;
-    const middle = (y1 + y2) / 2;
+    const sameRow = y1 === y2;
+    const busGap = sameRow ? 3.4 : 2.2;
+    const middle = sameRow ? y1 : (y1 < y2 ? (ay + 62 + by) : (by + 62 + ay)) / 2;
+    const bus = draw(svg, 'g', { class: 'internal-bus-group', 'data-bus': [from, to].sort().join('→'),
+      'aria-hidden': 'true' });
     const rail = offset => `M${x1 + offset} ${y1} V${middle + offset} H${x2 + offset} V${y2}`;
-    draw(svg, 'path', { d: rail(-busGap), class: 'internal-bus' });
-    draw(svg, 'path', { d: rail(busGap), class: 'internal-bus return' });
+    draw(bus, 'path', { d: rail(-busGap), class: 'internal-bus' });
+    draw(bus, 'path', { d: rail(busGap), class: 'internal-bus return' });
     const arrow = (x, y, dx, dy) => {
       const px = -dy, py = dx;
-      draw(svg, 'path', { class: 'internal-arrow',
-        d: `M${x - dx * 4 + px * 3} ${y - dy * 4 + py * 3} L${x} ${y} L${x - dx * 4 - px * 3} ${y - dy * 4 - py * 3}` });
+      draw(bus, 'path', { class: 'internal-arrow',
+        d: `M${x - dx * 7 + px * 2} ${y - dy * 7 + py * 2} L${x} ${y} L${x - dx * 7 - px * 2} ${y - dy * 7 - py * 2} Z` });
     };
     if (Math.abs(x2 - x1) >= 20) {
-      const direction = x2 > x1 ? 1 : -1;
-      const center = (x1 + x2) / 2;
-      arrow(center, middle - busGap, direction, 0);
-      arrow(center, middle + busGap, -direction, 0);
+      const start = sameRow ? (x2 > x1 ? ax + aw : bx + bw) : Math.min(x1, x2);
+      const end = sameRow ? (x2 > x1 ? bx : ax) : Math.max(x1, x2);
+      if (end - start >= 12) {
+        const at = ratio => start + (end - start) * ratio;
+        arrow(at(0.28), middle - busGap, 1, 0);
+        arrow(at(0.72), middle + busGap, -1, 0);
+      }
     } else {
-      const direction = y2 > y1 ? 1 : -1;
-      const center = (y1 + y2) / 2;
-      arrow(x1 - busGap, center, 0, direction);
-      arrow(x2 + busGap, center, 0, -direction);
+      const start = y2 > y1 ? ay + 62 : by + 62;
+      const end = y2 > y1 ? by : ay;
+      if (end - start >= 12) {
+        const at = ratio => start + (end - start) * ratio;
+        arrow(x1 - busGap, at(0.3), 0, 1);
+        arrow(x2 + busGap, at(0.7), 0, -1);
+      }
     }
   }
   const controls = [];

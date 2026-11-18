@@ -4,7 +4,7 @@ export const WIDTHS = LINK_WIDTHS;
 const all = [1, 2, 3, 4, 5, 6];
 const nfm = [1, 2, 3, 4, 5];
 const entries = {
-  link_training: [all, ['nonflit', 'flit'], 'schematic', '训练/Flit 为教学示意，未实现真实 FM 编码'],
+  link_training: [all, ['nonflit', 'flit'], 'schematic', '训练/Flit 为示意，未实现真实 FM 编码'],
   phy_link: [all, ['auto'], 'schematic', 'PHY 为近似模型；模式按速率自动选择'],
   loopback_bert: [all, ['auto'], 'schematic', '环回为预设行为；BERT 判定含 95% 置信上界'],
   flit_gen6: [[6], ['flit'], 'schematic', '256B 布局与故障结果示意，不执行标准 CRC/FEC'],

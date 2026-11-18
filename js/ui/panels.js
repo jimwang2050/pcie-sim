@@ -373,7 +373,7 @@ function tlpView(packet) {
         <div class="hexrow">${packet.dataDws.map((dw) => `<span class="byte">0x${(dw >>> 0).toString(16).toUpperCase().padStart(8, '0')}</span>`).join('')}</div>
       </div>`
     : '';
-  return `<p class="hint">逻辑 DWORD 顺序，DWORD 内小端字节；非线上抓包字节流。${packet.fidelity === 'schematic' ? '本消息为教学示意，未实现标准完整头。' : 'Non-Flit 字段模型（选定子集）'}</p>
+  return `<p class="hint">逻辑 DWORD 顺序，DWORD 内小端字节；非线上抓包字节流。${packet.fidelity === 'schematic' ? '本消息为示意，未实现标准完整头。' : 'Non-Flit 字段模型（选定子集）'}</p>
     <div class="insp-section">
       <h3>TLP 字节（${packet.headerLen}B 头 + ${packet.dataBytes.length}B 数据）</h3>
       <div class="hexrow">${bytes}</div>

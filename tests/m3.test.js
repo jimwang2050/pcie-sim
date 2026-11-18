@@ -24,7 +24,7 @@ test('M3/URL：格式化后可原样解析回来', () => {
   assert.ok(formatState(state).startsWith('#'));
 });
 
-test('M3/教学导引：13 个场景都有导引且各段非空', () => {
+test('M3/导引：13 个场景都有导引且各段非空', () => {
   for (const key of Object.keys(SCENARIOS)) {
     const guide = SCENARIO_GUIDE[key];
     assert.ok(guide, `缺少导引：${key}`);

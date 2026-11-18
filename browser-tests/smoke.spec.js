@@ -54,10 +54,10 @@ test('模式与场景不兼容时自动切换为自动模式', async ({ page }) 
   await expect(page.locator('#step')).toBeEnabled();
 });
 
-test('教学导引可打开并用 Esc 关闭', async ({ page }) => {
+test('导引可打开并用 Esc 关闭', async ({ page }) => {
   await page.goto('./');
   await page.locator('#guideBtn').click();
-  await expect(page.locator('#modalTitle')).toHaveText('场景教学导引');
+  await expect(page.locator('#modalTitle')).toHaveText('场景导引');
   await expect(page.locator('.guide-section').first()).toBeVisible();
   await expect(page.locator('.guide-list').first()).toBeVisible();
   await page.keyboard.press('Escape');

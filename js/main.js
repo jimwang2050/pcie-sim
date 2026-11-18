@@ -367,13 +367,13 @@ function openCompare() {
   showModal();
 }
 
-/** 教学导引：当前场景的学习目标、前置、观察点、结论与简化边界。 */
+/** 导引：当前场景的学习目标、前置、观察点、结论与简化边界。 */
 function openGuide() {
   const guide = SCENARIO_GUIDE[scenarioKey];
   modalMode = 'guide';
-  $('modalTitle').textContent = '场景教学导引';
+  $('modalTitle').textContent = '场景导引';
   if (!guide) {
-    modalBody.innerHTML = '<p class="empty">该场景暂无教学导引。</p>';
+    modalBody.innerHTML = '<p class="empty">该场景暂无导引。</p>';
     showModal();
     return;
   }

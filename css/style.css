@@ -1520,7 +1520,7 @@ kbd { font-family: var(--mono); font-size: 9px; padding: 1px 4px; border: 1px so
 .tl-filter-note { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
 .tl-filters .count { margin-left: auto; }
 
-/* ---------- 教学导引 ---------- */
+/* ---------- 导引 ---------- */
 .guide-scenario {
   margin: 0 0 12px;
   padding: 6px 10px;

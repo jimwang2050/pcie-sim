@@ -44,6 +44,16 @@
 
 详见 [M3 交付说明](docs/M3_DELIVERY.md)。
 
+## M4：发布验收（v0.3.0）
+
+- **静态站点自检**：`npm run check:site` 从入口递归解析 ES Module 引用，检查缺失文件、绝对路径、`.nojekyll` 与是否误引用测试/文档；加 `--base <URL>` 可校验线上状态码与 MIME。
+- **跨浏览器冒烟**：Playwright 增加 Chromium / Firefox / WebKit 三个 project，CI 三套都跑；本地可用 `PCIE_BROWSER_CHANNEL=chrome` 走系统 Chrome，`PCIE_BROWSER_PROJECT=chromium` 只跑单套。
+- **发布闸门**：`test`（含站点自检）→ `browser`（三浏览器）→ `deploy`（仅 main push），前一关失败不部署。
+- **产物身份**：部署时生成 `version.json`（版本 / commit / run / 构建时间），页面「说明」面板底部显示，便于确认线上对应提交。
+- **版本**：0.3.0。回归 116 项，Chromium / WebKit 各 18 项冒烟通过；Firefox 由 CI 验证（本机 Playwright Firefox 构建无法启动）。
+
+发布闸门与回滚步骤见 [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)，本轮结果见 [M4_RELEASE.md](docs/M4_RELEASE.md)。
+
 ## 快速开始
 
 ```bash
@@ -52,8 +62,10 @@ npm run serve     # python3 -m http.server 8123
 # 打开 http://localhost:8123
 
 npm test          # 核心/协议/场景矩阵/回退测试，不依赖 npm install
+npm run check:site    # 静态引用与模块图自检（发布闸门）
 npm ci            # 仅开发浏览器回归需要
-npm run test:browser  # 默认使用本机 Chrome；CI 使用 Playwright Chromium
+npm run test:browser  # Chromium / Firefox / WebKit；本地可用 PCIE_BROWSER_PROJECT=chromium
+node scripts/bench.mjs # 模型吞吐基线（不含渲染）
 ```
 
 也可以直接访问已发布的 GitHub Pages：<https://jimwang2050.github.io/pcie-sim/>（`main` 分支根目录，纯静态、无需构建）。
@@ -197,3 +209,5 @@ npm test
 覆盖有序集编解码与传输时间、链路训练与变速、Gen6 Flit 布局 / 显式故障结果 / 重传示意、TLP 与配置空间 / BAR 枚举、VC0 信用原子准入与阻塞重发、Requester+Tag 事务匹配、内存读写、MSI / MSI-X（含 Pending 补发）、AER（Mask / Severity）、DPC + RP PIO（Posted 丢弃）、ATS + PRI、PM 状态机与 PMCSR、PHY 与均衡、Loopback / BERT 统计判定、单步回退、事件确定性，以及 PM 典型模型渲染片段的存在性断言。
 
 另含 M3 回归：URL 状态解析与回写、13 场景教学导引完整性、事件筛选、版本化 JSON 导出（BigInt 无损）、事件 schema 字段。浏览器冒烟覆盖 13 场景 + 配置收敛 + 教学导引 + 事件筛选 + URL 恢复。
+
+M4 另有静态站点自检（入口/模块图/绝对路径/`.nojekyll`）与版本一致性测试；浏览器冒烟在 CI 上跑 Chromium / Firefox / WebKit 三套。

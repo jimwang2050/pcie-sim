@@ -142,3 +142,18 @@ td:not(:first-child), .bar-row strong { font-variant-numeric: tabular-nums; }
 .timeline-row span:first-child { overflow-wrap: anywhere; }
 footer { padding: 18px 0; }
 @media (max-width: 720px) { .grid { grid-template-columns: 1fr; gap: 0; } }
+
+.formula-block { margin: 14px 0; }
+.formula-block h3 { margin: 0 0 6px; font-size: 14px; color: var(--blue); }
+.formula {
+  margin: 6px 0 8px; padding: 9px 11px; background: #0c1728;
+  border-left: 3px solid var(--blue); border-radius: 4px;
+  font: 12.5px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; color: #d4eaff;
+}
+.formula-note { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.metric-formulas table { margin: 4px 0 10px; }
+.metric-formulas th { text-align: left; color: var(--muted); font-weight: 600; }
+.metric-formulas td { vertical-align: top; }
+.boundary { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.boundary li { margin: 3px 0; }

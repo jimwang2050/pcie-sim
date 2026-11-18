@@ -64,18 +64,97 @@
       <div id="metric-map" class="metric-map"></div>
       <details class="metric-formulas">
         <summary>计算公式与计量边界</summary>
-        <dl>
-          <dt>业务吞吐与方向占用</dt>
-          <dd><code>B = Σ 已交付业务字节 / Δt</code>；<code>ρℓ = 方向线上字节 / (Δt × Cℓ)</code>。读以可消费、写以目标可见为准。</dd>
-          <dt>容量与资源上界</dt>
-          <dd><code>Cℓ = GT/s × Lane 数 / 8 × η</code>。固定业务配比下，<code>Bmax = minᵣ(Kᵣ × V / Dᵣ)</code>；<code>V</code> 为总业务字节，<code>Dᵣ</code> 为总资源占用量 × ns，<code>Kᵣ</code> 为资源并行容量。方向链路、AXI、Tag、Credit 各自约束。</dd>
-          <dt>链路理想吞吐与达成率</dt>
-          <dd><code>Wℓ = Σ MRd 包字节 + Σ MWr 包字节 + Σ CplD 包字节</code>；每包计载荷、头及本模型封包开销。<code>Tℓ = Wℓ / Cℓ</code>；各方向可并行，故 <code>Bideal = V / maxℓ(Tℓ) = minℓ(Cℓ × V / Wℓ)</code>。下表按本轮参数代入。</dd>
-          <dt>逐段递推与读 RTT</dt>
-          <dd><code>t出 = t到 + Q + L₀ + S / C + T切换</code>。Q 为该段准入等待，L₀ 为管线或传播时延，S 为本段字节数。<code>RTT首 = min(tCpl) − t₀</code>，<code>RTT末 = max(tCpl) − t₀</code>；多片按完成时间取首末，不把并行路径时延叠加。</dd>
-          <dt>Tag 与写入</dt>
-          <dd><code>BTag ≈ NTag × 平均每笔 MRd 有效字节 / 平均 Tag 持有时间</code>。持有时间从分配到回收，比链路 RTT 多计发前和接收处理。Posted MWr 单独计算提交到目标可见的延迟。</dd>
-        </dl>
+
+        <div class="formula-block">
+          <h3>符号定义</h3>
+          <table>
+            <thead><tr><th>符号</th><th>含义</th><th>单位</th><th>物理含义 / 归属</th></tr></thead>
+            <tbody>
+              <tr><td>V</td><td>业务有效字节</td><td>B</td><td>应用请求交付的读写数据量，不含 TLP 头、DLLP 与封包开销</td></tr>
+              <tr><td>Δt</td><td>采样窗长度</td><td>ns</td><td>半开区间 [t₀, t₁)；吞吐按业务交付时刻选择样本</td></tr>
+              <tr><td>B</td><td>有效吞吐</td><td>GB/s</td><td>单位时间交付的业务字节；十进制，1 GB/s = 1 B/ns</td></tr>
+              <tr><td>Cℓ</td><td>方向 ℓ 的有效容量</td><td>GB/s</td><td>编码与可用率折算后的单向线容量，不是引脚原始速率</td></tr>
+              <tr><td>η</td><td>编码 / 可用率</td><td>—</td><td>NFM：(128/130) × 可用率；FM：236/256（仅 TLP 区）</td></tr>
+              <tr><td>Wℓ</td><td>方向 ℓ 的模型线字节</td><td>B</td><td>该方向全部包的头 + 载荷 + 封包开销之和</td></tr>
+              <tr><td>ρℓ</td><td>方向占用率</td><td>%</td><td>Wℓ / (Δt · Cℓ)；持续 &gt; 100% 表示该方向不可持续</td></tr>
+              <tr><td>B<sub>ideal</sub></td><td>链路理想吞吐</td><td>GB/s</td><td>只受各方向线容量限制时的乐观业务吞吐</td></tr>
+              <tr><td>B<sub>max</sub></td><td>资源解析上界</td><td>GB/s</td><td>只受 Tag / AXI / Credit / 队列等资源限制时的乐观上界</td></tr>
+              <tr><td>K<sub>r</sub></td><td>资源 r 的并行容量</td><td>个</td><td>有效 Tag 数、AXI outstanding、每类 Credit 数等</td></tr>
+              <tr><td>D<sub>r</sub></td><td>资源 r 的占用需求</td><td>个·ns</td><td>Σ(每次占用数量 × 持有时间)</td></tr>
+              <tr><td>Q<sub>r</sub></td><td>准入等待</td><td>ns</td><td>排队、Credit、背压等“等到资源”的时间，不含处理本身</td></tr>
+              <tr><td>L0<sub>r</sub></td><td>管线 / 传播延迟</td><td>ns</td><td>空载时穿过该段的固定延迟</td></tr>
+              <tr><td>S<sub>r</sub></td><td>本段字节数</td><td>B</td><td>进入该段串行化服务的字节（头 + 载荷 + 开销）</td></tr>
+              <tr><td>II<sub>r</sub></td><td>启动间隔</td><td>ns</td><td>连续两次操作之间的最小发起间隔</td></tr>
+              <tr><td>T<sub>turn,r</sub></td><td>读写切换代价</td><td>ns</td><td>DDR/HBM 等目标在读写方向之间切换的额外时间</td></tr>
+              <tr><td>N<sub>tag</sub> / H<sub>tag</sub></td><td>有效 Tag 数 / 平均持有</td><td>个 / ns</td><td>持有：Tag 分配到回收，含发前等待与接收处理</td></tr>
+              <tr><td>W<sub>axi</sub> / f<sub>axi</sub></td><td>AXI 数据宽度 / 时钟</td><td>bit / GHz</td><td>桥接器接口位宽与时钟（1 GHz = 1 ns⁻¹）</td></tr>
+              <tr><td>P<sub>axi</sub></td><td>AXI 物理峰值</td><td>GB/s</td><td>W<sub>axi</sub> / 8 × f<sub>axi</sub>；接口最多能搬多少</td></tr>
+              <tr><td>C<sub>bridge</sub></td><td>桥接器有效上限</td><td>GB/s</td><td>产品策略，预设 min(P<sub>axi</sub>, 链路原始带宽)，且必须 ≤ P<sub>axi</sub></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="formula-block">
+          <h3>1. 有效吞吐与方向占用</h3>
+          <pre class="formula">B = Σᵢ Vᵢ / Δt
+ρℓ = Wℓ / (Δt · Cℓ)</pre>
+          <p class="formula-note">读以“请求方可以消费”计入，写以“目标可见”计入；本地接受、写 FIFO、链路 Ack 都不算完成。方向占用按该方向线字节单独计算，双向业务合计可以超过任一单向容量。</p>
+        </div>
+
+        <div class="formula-block">
+          <h3>2. 链路容量</h3>
+          <pre class="formula">Cℓ = GT/s × Lanes / 8 × η
+η_NFM = (128 / 130) × 可用率
+η_FM  = 236 / 256            （仅 TLP 区，未扣 Flit 填充与控制开销）</pre>
+          <p class="formula-note">串行速率先换算为字节率（GT/s ÷ 8），再扣编码与可用率。Gen6 的 236/256 只是名义 TLP 区上限，不代表整机可达带宽。</p>
+        </div>
+
+        <div class="formula-block">
+          <h3>3. RC Bridge 两层能力</h3>
+          <pre class="formula">P_axi = W_axi / 8 × f_axi
+C_bridge ≤ P_axi
+预设：C_bridge = min(P_axi, GT/s × Lanes / 8)</pre>
+          <p class="formula-note">物理 AXI 峰值描述接口能力；桥接器有效上限是产品策略，预设尽量与链路带宽对齐。Gen6 ×16：1024 bit ÷ 8 × 1 GHz = 128 GB/s，预设有效上限也是 128 GB/s；Gen4 ×8 的接口峰值 32 GB/s 高于链路 16 GB/s，预设取 16 GB/s。</p>
+        </div>
+
+        <div class="formula-block">
+          <h3>4. 链路理想吞吐</h3>
+          <pre class="formula">Wℓ = Σ MRd 包字节 + Σ MWr 包字节 + Σ CplD 包字节
+Tℓ = Wℓ / Cℓ
+B_ideal = V / maxℓ Tℓ = minℓ (Cℓ · V / Wℓ)</pre>
+          <p class="formula-note">各方向可以并行，因此取“最长方向时间”对应最小吞吐；只比较本轮有流量的方向。P2P 每跳单独算占用，但 V 不会因为经过两跳而重复计入。</p>
+        </div>
+
+        <div class="formula-block">
+          <h3>5. 资源解析上界</h3>
+          <pre class="formula">D_r = Σ (占用数量 × 持有时间)
+B_max = min_r (K_r · V / D_r)</pre>
+          <p class="formula-note">K<sub>r</sub> 是并行度（Tag、AXI outstanding、Credit、队列深度），D<sub>r</sub> 是固定业务配比下该资源的累计占用。解析模型按无争用占用计算，是乐观上界，不包含实际排队。</p>
+        </div>
+
+        <div class="formula-block">
+          <h3>6. 逐段递推、RTT 与 Tag</h3>
+          <pre class="formula">t_out(r)  = t_in(r) + Q_r + L0_r + S_r / C_r + T_turn,r
+t_busy(r) = max(II_r, S_r / C_r) + T_turn,r
+RTT_first = min_j(t_rx,j) − t_tx
+RTT_last  = max_j(t_rx,j) − t_tx
+B_tag     ≈ N_tag × 每笔 MRd 平均有效字节 / H_tag</pre>
+          <p class="formula-note">RTT 从首跳发送侧开始串行化 MRd，到最后一片 CplD 抵达发起端邻接链路接收侧；不含发起端提交队列与最终重组。多片 Completion 取完成时刻的最小/最大值，不把并行路径相加。Posted MWr 没有事务 RTT，分别报告“提交→本地接受”和“提交→目标可见”。</p>
+        </div>
+
+        <div class="formula-block">
+          <h3>计量边界</h3>
+          <ul class="boundary">
+            <li>采样窗为半开区间 [t₀, t₁)；跨窗包按发送时间比例计入，业务按整笔完成时刻记账。</li>
+            <li>读按可消费、写按目标可见；整批吞吐从首笔提交计到末笔回收，包含启动与排空。</li>
+            <li>方向独立记账；双向合计与单向占用是两个口径，不能互相替代。</li>
+            <li>延迟按起点选样，分位数只统计已观察到终点的样本；未收齐的 Completion 单独计数。</li>
+            <li>Q（等待）与 L0（处理/传播）分开；不同资源的等待可以重叠，不能直接相加成端到端延迟。</li>
+            <li>P2P 每跳独立计算链路与 Credit，但业务字节 V 只计一次；经主机内存中转的路径不属于直达 P2P。</li>
+            <li>Gen6 只给解析预算；所有参数为示例值，未经硬件校准前不能作为合规或选型结论。</li>
+          </ul>
+        </div>
+
         <div id="ideal-calculation"></div>
         <div id="ideal-directions"></div>
       </details>

@@ -176,3 +176,18 @@ test('RC Bridge 分层显示 AXI 物理峰值与桥接器有效上限', async ({
   await page.getByRole('button', { name: '运行模型' }).click();
   await expect(page.getByRole('status')).toContainText('无法计算');
 });
+
+test('公式与计量边界包含符号定义、单位与物理含义', async ({ page }) => {
+  await page.goto('./performance.html');
+  const details = page.locator('details.metric-formulas');
+  await details.locator('summary').click();
+  await expect(details).toContainText('符号定义');
+  await expect(details.locator('.formula-block table')).toContainText('业务有效字节');
+  await expect(details.locator('.formula-block table')).toContainText('物理含义');
+  await expect(details.locator('.formula-block table')).toContainText('桥接器有效上限');
+  await expect(details).toContainText('Cℓ = GT/s × Lanes / 8 × η');
+  await expect(details).toContainText('P_axi = W_axi / 8 × f_axi');
+  await expect(details).toContainText('B_ideal = V / maxℓ Tℓ');
+  await expect(details).toContainText('计量边界');
+  await expect(details).toContainText('半开区间');
+});

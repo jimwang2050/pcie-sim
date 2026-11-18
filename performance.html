@@ -58,7 +58,10 @@
         <p id="txn-route-note" class="hint"></p>
         <div id="txn-stops" class="txn-stops"></div>
         <p id="txn-focus" class="txn-focus" aria-live="polite"></p>
-        <label>记录视图 <select id="trace-view"><option value="events">完整事件记录</option><option value="rtt">架构图 · 静态 RTT 标定</option></select></label>
+        <div class="actions trace-actions">
+          <label>播放样本 <select id="flow-sample" aria-label="播放样本"></select></label>
+          <label>记录视图 <select id="trace-view"><option value="events">完整事件记录</option><option value="rtt">架构图 · 静态 RTT 标定</option></select></label>
+        </div>
         <div id="rtt-static" hidden>
           <label>MRd 子事务 <select id="rtt-txn"></select></label>
           <p id="rtt-static-summary" class="hint"></p>
@@ -177,7 +180,6 @@ B_tag     ≈ N_tag × 每笔 MRd 平均有效字节 / H_tag</pre>
       </section>
       <div id="playback" class="flow-player" hidden>
         <div class="actions">
-          <label>播放样本 <select id="flow-sample" aria-label="播放样本"></select></label>
           <label>流量层 <select id="flow-layer" aria-label="流量层"><option value="all">控制与数据</option><option value="control">仅控制流</option><option value="data">仅数据流</option></select></label>
           <button type="button" id="play-flow">播放</button>
           <button type="button" id="prev-flow">上一步</button>

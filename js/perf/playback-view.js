@@ -102,8 +102,9 @@ export function createPlayback(get, format, syncTimeline) {
     play.textContent = '暂停';
     const tick = time => {
       if (lastFrame === null) lastFrame = time;
-      const rate = Number(speed?.value) || 1;
-      baseElapsed += Math.max(0, time - lastFrame) * rate;
+      const slow = Number(speed?.value) || 1;
+      // 选择值表示慢放倍数：1× 原速，2× 放慢到 1/2，32× 放慢到 1/32。
+      baseElapsed += Math.max(0, time - lastFrame) / slow;
       lastFrame = time;
       position = positionAt(startPosition, baseElapsed);
       move(position);

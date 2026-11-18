@@ -154,16 +154,20 @@ test('拓扑节点显示仿真占用条与解析瓶颈标记', async ({ page }) 
   await expect(page.locator('#topology [data-node="host.CMN"] .bottleneck-tag')).toHaveText('瓶颈');
 });
 
-test('播放速度支持 1× 到 32×，32× 可在数秒内播完', async ({ page }) => {
+test('慢放倍数 1×–32× 按倍数放慢播放', async ({ page }) => {
   await page.goto('performance.html');
   await expect(page.getByRole('status')).toContainText('已完成');
-  const speed = page.getByLabel('播放速度');
+  const speed = page.getByLabel('慢放倍数');
   await expect(speed.locator('option')).toHaveText(['1×', '2×', '4×', '8×', '16×', '32×']);
   await speed.selectOption('32');
   await page.getByRole('button', { name: '播放', exact: true }).click();
   await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '播放', exact: true })).toBeVisible({ timeout: 8000 });
-  await expect(page.locator('#flow-clock')).toHaveValue('10000');
+  await page.waitForTimeout(900);
+  // 32× 慢放：0.9 s 实际时间只推进约 28 ms 的原速时间，远未到样本末尾
+  await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible();
+  expect(Number(await page.locator('#flow-clock').inputValue())).toBeLessThan(1000);
+  await page.getByRole('button', { name: '暂停', exact: true }).click();
+  await expect(page.getByRole('button', { name: '播放', exact: true })).toBeVisible();
 });
 
 test('duplex P2P renders shared wires and exports results on mobile', async ({ page }) => {

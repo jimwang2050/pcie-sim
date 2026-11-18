@@ -1,8 +1,9 @@
 import { DEFAULTS, profile, rcBridgePreset } from './model.js';
-import { drawTopology } from './topology-view.js';
+import { drawTopology, nodeLabel } from './topology-view.js';
 import { createPlayback } from './playback-view.js';
 import { createInspector, eventName } from './event-inspector.js';
-import { rttBreakdowns } from './rtt-breakdown.js';
+import { rttBreakdowns, rttLatency } from './rtt-breakdown.js';
+import { createLatencyView } from './latency-view.js';
 import { groupTrace } from './trace-groups.js';
 
 const get = id => document.getElementById(id);
@@ -31,6 +32,10 @@ let worker;
 let result;
 let activeBoard;
 let breakdowns = [];
+const latencyView = createLatencyView(get, format, id => {
+  activeBoard?.focus(id);
+  if (id) activeBoard?.inspect(nodeLabel(id), id, false);
+});
 function updateTraceView() {
   const staticMode = get('trace-view').value === 'rtt';
   const selected = breakdowns[Number(get('rtt-txn').value)];
@@ -40,6 +45,11 @@ function updateTraceView() {
   if (staticMode) playback.pause();
   activeBoard?.rtt(selected, staticMode);
   if (!staticMode) playback.refresh();
+  const composition = selected && result?.simulation
+    ? rttLatency(result.simulation.trace.filter(event => event.opId === get('trace-op').value),
+      selected, result.simulation.model)
+    : null;
+  latencyView(composition);
   get('rtt-static-summary').textContent = selected ?
     `首片 RTT ${format(selected.firstNs)} ns；末片 RTT ${format(selected.lastNs)} ns。沿同字母虚线从硬件读到时间尺：A 发出、B 目标开始、C 目标结束、D 首片、E 末片（单片时合并为 D）。` :
     '此操作没有可完整重建的 MRd 往返（纯写、样本不完整，或未收齐 Completion）。';
@@ -122,7 +132,8 @@ function renderTopology(budget, simulation, attainment) {
     const matches = key => nodeMatch(key, id) || (aliases[id] && nodeMatch(key, aliases[id]));
     const entries = simulation?.resources.filter(item => matches(item.id)) ?? [];
     const bounds = budget.bounds.filter(item => matches(item.id));
-    const details = entries.map(item => `${item.id}：峰值 ${item.peak}/${item.capacity}，累计等待 ${format(item.waitNs)} ns`);
+    const details = entries.map(item =>
+      `${item.id}：占用 ${format((item.utilization ?? 0) * 100)}%，峰值 ${item.peak}/${item.capacity}，累计等待 ${format(item.waitNs)} ns`);
     const wire = entries.find(item => item.id === id && item.measuredGBps !== undefined);
     const node = profile(budget.model, id);
     details.unshift(id.includes('>') ?
@@ -137,7 +148,9 @@ function renderTopology(budget, simulation, attainment) {
     get('node-detail').textContent = `${label} · ${summary}`;
     if (inspect) inspectEvent(label, matches, summary, simulation);
   };
-  return drawTopology(host, budget, simulation, selectNode, format);
+  const board = drawTopology(host, budget, simulation, selectNode, format);
+  board.inspect = selectNode;
+  return board;
 }
 
 function timeline(simulation) {

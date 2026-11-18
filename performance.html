@@ -166,7 +166,15 @@ B_tag     ≈ N_tag × 每笔 MRd 平均有效字节 / H_tag</pre>
         <div id="ideal-calculation"></div>
         <div id="ideal-directions"></div>
       </details>
-      <div class="board-legend"><span class="request">MRd 请求</span><span class="posted">MWr 写数据</span><span class="completion">CplD 读返回</span><span class="shared">MWr 与 CplD 同向共享</span><span>灰色：本轮未使用</span></div>
+      <div class="board-legend"><span class="request">MRd 请求</span><span class="posted">MWr 写数据</span><span class="completion">CplD 读返回</span><span class="shared">MWr 与 CplD 同向共享</span><span>灰色：本轮未使用</span><span class="load-key">底部细条：仿真资源占用</span></div>
+      <section id="latency-compose" class="latency-compose" hidden aria-labelledby="compose-title">
+        <div class="section-title"><h3 id="compose-title">端到端延迟构成</h3><span id="compose-scope"></span></div>
+        <div id="compose-bar" class="compose-bar" role="group" aria-label="RTT 首片逐跳延迟构成"></div>
+        <div id="compose-legend" class="compose-legend"></div>
+        <p id="compose-summary" class="compose-summary"></p>
+        <p id="compose-context" class="hint"></p>
+        <details class="compose-detail"><summary>逐跳明细（等待 Q / 固定延迟 L₀ / 串行化）</summary><div id="compose-hops"></div></details>
+      </section>
       <div id="playback" class="flow-player" hidden>
         <div class="actions">
           <label>播放样本 <select id="flow-sample" aria-label="播放样本"></select></label>
@@ -181,7 +189,7 @@ B_tag     ≈ N_tag × 每笔 MRd 平均有效字节 / H_tag</pre>
         <p id="flow-activity"></p>
         <div id="flow-events"></div>
       </div>
-      <p class="hint board-note">每对方向线代表一个全双工 PCIe Link，百分比为方向占用率；金色边框标记解析瓶颈。FC 数值是各类别独立的 Header/Data 额度及回补延迟。每步浮窗显示同一仿真时刻的关键事件，其余同刻事件可在节点明细中展开。</p>
+      <p class="hint board-note">每对方向线代表一个全双工 PCIe Link，百分比为仿真方向占用率；节点底部细条为资源占用率，金色边框与“瓶颈”标记解析最紧约束。延迟构成按首跳 MRd 发送 → 首片 CplD 抵达逐跳拆解，色块宽度为占比，斜纹为等待。FC 数值是各类别独立的 Header/Data 额度及回补延迟。</p>
       <p id="node-detail" aria-live="polite"></p>
     </section>
     <div class="grid">

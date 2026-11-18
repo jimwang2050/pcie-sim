@@ -48,7 +48,13 @@ node scripts/perf.mjs simulate --config docs/perf-p2p-duplex.json
 
 预设按 Gen/Lane 自动套用（Gen4/5 每 Lane 32 bit，Gen6 每 Lane 64 bit，时钟 1 GHz），三个输入仍可手动覆盖。有效上限超过物理峰值会被拒绝（CLI 报错、页面显示「无法计算」），不会静默截断。解析结果里的 `rcBridge` 同时给出 `interfacePeakGBps` 与 `effectiveGBps`；页面的参数区与「理想吞吐」说明都会分开显示这两个数。
 
-资源表中 `bytes` 是已开始服务的字节，`measuredBytes` 是窗口内串行化的模型线字节（编码和有序集预算已折算到容量）。`waitNs` 在资源实际阻塞时累计，不同事务或资源可以重叠，不能直接相加得到端到端延迟。样本 Trace 给出提交、资源准入和到达、Tag 分配、Cpl 片段、写本地接受、写目标可见的时间；按 `flowId/opId/burstId/txnId` 关联。自动互斥关键路径瀑布留给展示阶段。
+资源表中 `bytes` 是已开始服务的字节，`measuredBytes` 是窗口内串行化的模型线字节（编码和有序集预算已折算到容量）。`waitNs` 在资源实际阻塞时累计，不同事务或资源可以重叠，不能直接相加得到端到端延迟。样本 Trace 给出提交、资源准入和到达、Tag 分配、Cpl 片段、写本地接受、写目标可见的时间；按 `flowId/opId/burstId/txnId` 关联。
+
+### 拓扑阅读与逐跳归因
+
+- 拓扑节点底部细条显示同一次仿真的资源占用率；同节点的 `:tx/:rx/:request/:response` 服务池取平均，避免方向池互相覆盖。
+- 金色边框和「瓶颈」小标签标出解析模型的最紧约束 `bounds[0]`（节点或链路），与实测占用分属两套口径。
+- 「端到端延迟构成」把所选 MRd 的首片 RTT 拆成逐跳 `Q / L0 / 串行化 / 切换`，色块宽度为占首片 RTT 的比例，斜纹为等待；点击色块或明细行会高亮对应硬件并刷新节点明细。发起段与接收段列在 RTT 窗口外，用于理解整笔业务流。口径和对账方式见 [Throughput 与 RTT 模型](THROUGHPUT_RTT_MODEL.md#逐跳归因端到端延迟构成)。
 
 ## 保真度边界
 
@@ -58,9 +64,9 @@ node scripts/perf.mjs simulate --config docs/perf-p2p-duplex.json
 
 ## 本地验收
 
-- `npm test`：127/127 通过，其中 11 项性能回归，含 25 组路径/配比组合、空载读写手算、末片释放 Tag、Credit 守恒、双端同向争用、截断窗口与 RC Bridge 两层预设。
-- `npm run check:site`：64 个文件、2 个入口（`index.html`、`performance.html`），0 警告、0 错误；性能核心由 CLI 与 Node 测试加载。
-- 浏览器：13 场景冒烟 18 条 + 性能页 6 条（Chromium / Firefox / WebKit 三套），其中性能页覆盖 RC Bridge 预设、手动覆盖与超限拒绝。
+- `npm test`：129/129 通过，其中 13 项性能回归，含 25 组路径/配比组合、空载读写手算、末片释放 Tag、Credit 守恒、双端同向争用、截断窗口、RC Bridge 两层预设与逐跳 RTT 对账。
+- `npm run check:site`：65 个文件、2 个入口（`index.html`、`performance.html`），0 警告、0 错误；性能核心由 CLI 与 Node 测试加载。
+- 浏览器：13 场景冒烟 18 条 + 性能页 10 条（Chromium / Firefox / WebKit 三套），其中性能页覆盖 RC Bridge 预设、逐跳延迟构成与拓扑高亮、节点占用条/瓶颈标记、手动覆盖与超限拒绝。
 - `matrix --count 256`：20 组全部完成。下表是 Gen4 ×8 示例的整批有效带宽，单位 GB/s；DMA/P2P 为 512 B/操作，CPU BAR 为 4 B/操作。
 
 | 发起路径 | 纯读 | 50:50 | 纯写 |

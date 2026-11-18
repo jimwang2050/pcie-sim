@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { analyze, throughputAttainment } from '../js/perf/budget.js';
 import { configFor, completions, flowSpecs, operations, linkCapacity, profile, rcBridgePreset, split } from '../js/perf/model.js';
 import { simulate } from '../js/perf/simulate.js';
-import { rttBreakdowns } from '../js/perf/rtt-breakdown.js';
+import { rttBreakdowns, rttLatency } from '../js/perf/rtt-breakdown.js';
 
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} vs ${expected}`);
 
@@ -129,6 +129,37 @@ test('512B EP read follows hand-calculated one-packet request and split Completi
   assert.equal(accepted.readRtt.lastNs.p50, null);
   const singleWrite = simulate([{ readPct: 0, count: 1, writeBytes: 256 }], { nfmAvailability: 1 }).flows[0];
   near(singleWrite.writeVisibleNs.p50, 20 + 12 + 256 / 32 + fixed + 280 * cycle + 95 + 256 / 24);
+});
+
+test('per-hop latency composition reconciles with the MRd RTT and profile L0', () => {
+  const sim = simulate([{ scenario: 'ep-ddr', readPct: 100, count: 1 }], { nfmAvailability: 1 });
+  const [breakdown] = rttBreakdowns(sim.trace, 'host.DDR');
+  const composition = rttLatency(sim.trace, breakdown, sim.model);
+  near(composition.totals.rttNs, breakdown.firstNs);
+  near(composition.totals.waitNs + composition.totals.transitNs, breakdown.firstNs);
+  near(composition.totals.waitNs + composition.totals.latencyNs + composition.totals.serializationNs +
+    composition.totals.turnaroundNs, breakdown.firstNs);
+  near(composition.tailNs, breakdown.phases[3].ns);
+  assert.equal(composition.hops[0].node, 'epA>rc');
+  assert.equal(composition.hops.find(item => item.role === 'target').node, 'host.DDR');
+  const link = composition.hops.find(item => item.node === 'epA>rc');
+  near(link.latencyNs, 5);
+  near(link.transitNs, 5 + 24 / (16 * 128 / 130));
+  near(link.serializationNs, 24 / (16 * 128 / 130));
+  assert.deepEqual(composition.context.pre.map(item => item.node), ['epA.DMA', 'epA.AXI']);
+  assert.deepEqual(composition.context.post.map(item => item.node), ['epA.PHY', 'epA.CTL']);
+  assert.equal(composition.context.post[0].role, 'post');
+  assert.ok(composition.hops.every(item => item.waitNs >= 0 && item.serializationNs >= 0));
+});
+
+test('per-hop composition exposes admission waits under contention', () => {
+  const sim = simulate([{ scenario: 'ep-ddr', readPct: 50, count: 8 }], { tags: 1 }, { traceOps: 3 });
+  const events = sim.trace.filter(event => event.opId === 'flow1:2');
+  const [breakdown] = rttBreakdowns(events, 'host.DDR');
+  const composition = rttLatency(events, breakdown, sim.model);
+  const waits = [...composition.context.pre, ...composition.hops].map(item => item.waitNs);
+  assert.ok(waits.some(wait => wait > 0));
+  near(composition.totals.rttNs, breakdown.firstNs);
 });
 
 test('Tag, AXI, posted credit, and DDR bottlenecks are independently reproducible', () => {

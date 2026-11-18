@@ -110,6 +110,48 @@ test('topology playback steps through MRd and CplD and filters the data layer', 
   await expect(page.getByRole('button', { name: '播放', exact: true })).toBeVisible();
 });
 
+test('端到端延迟构成逐跳对账、联动高亮，并在纯写时隐藏', async ({ page }) => {
+  await page.goto('performance.html');
+  await expect(page.getByRole('status')).toContainText('已完成');
+  const compose = page.locator('#latency-compose');
+  await expect(compose).toBeVisible();
+  await expect(compose).toContainText('首片 RTT');
+  await expect(compose).toContainText('逐跳传输');
+  await expect(compose.locator('#compose-scope')).toContainText('EP A → RP');
+  const first = compose.locator('#compose-bar .compose-seg').first();
+  await expect(first).toHaveAttribute('data-hop', 'epA>rc');
+  await first.click();
+  await expect(page.locator('#topology [data-node="epA>rc"]')).toHaveClass(/hop-focus/);
+  await expect(page.locator('#node-detail')).toContainText('每向容量 Cℓ=');
+  await compose.getByText('逐跳明细').click();
+  await expect(compose.locator('#compose-hops tr[data-hop="host.DDR"]')).toHaveCount(1);
+  await compose.locator('#compose-hops tr[data-hop="host.DDR"]').click();
+  await expect(page.locator('#topology [data-node="host.DDR"]')).toHaveClass(/hop-focus/);
+  await expect(page.locator('#node-detail')).toContainText('host.DDR');
+  const total = compose.locator('.compose-total td').nth(6);
+  await expect(total).toHaveText(/^\d/);
+  await page.getByLabel('读写配比（字节）').selectOption('0');
+  await page.getByRole('button', { name: '运行模型' }).click();
+  await expect(page.getByRole('status')).toContainText('已完成');
+  await expect(compose).toBeHidden();
+  await expect(page.locator('#topology .hop-focus')).toHaveCount(0);
+});
+
+test('拓扑节点显示仿真占用条与解析瓶颈标记', async ({ page }) => {
+  await page.goto('performance.html');
+  await expect(page.getByRole('status')).toContainText('已完成');
+  const cmn = page.locator('#topology [data-node="host.CMN"]');
+  await expect(cmn).toHaveAttribute('data-load', /[\d.]+/);
+  await expect(cmn.locator('.load-track')).toHaveCount(1);
+  await expect(cmn.locator('.load-fill')).toHaveCount(1);
+  await page.locator('details').filter({ hasText: '调整节点与负载参数' }).first().click();
+  await page.getByLabel('CMN 系统互连（GB/s）').fill('8');
+  await page.getByRole('button', { name: '运行模型' }).click();
+  await expect(page.getByRole('status')).toContainText('已完成');
+  await expect(page.locator('#topology [data-node="host.CMN"]')).toHaveAttribute('data-bottleneck', '');
+  await expect(page.locator('#topology [data-node="host.CMN"] .bottleneck-tag')).toHaveText('瓶颈');
+});
+
 test('duplex P2P renders shared wires and exports results on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 850 });
   await page.goto('performance.html');

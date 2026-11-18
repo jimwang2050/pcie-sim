@@ -45,6 +45,16 @@ const switched = {
   'epB.DMA': [1010, 132, 102, 'DMA B', 'Requester'],
   'epB.HBM': [1010, 292, 102, 'HBM / DDR', '目标窗口'],
 };
+const linkNames = {
+  'epA>rc': 'EP A → RP', 'rc>epA': 'RP → EP A', 'epA>sw': 'EP A → Switch',
+  'sw>epA': 'Switch → EP A', 'epB>sw': 'EP B → Switch', 'sw>epB': 'Switch → EP B',
+};
+const nodeNames = Object.fromEntries([hostNodes, epA, switched]
+  .flatMap(group => Object.entries(group).map(([id, [, , , title]]) => [id, title])));
+
+export function nodeLabel(id) {
+  return linkNames[id] ?? nodeNames[id] ?? id;
+}
 
 export function drawTopology(host, budget, simulation, select, format) {
   const p2p = budget.flows[0].scenario.startsWith('p2p');
@@ -157,6 +167,7 @@ export function drawTopology(host, budget, simulation, select, format) {
       const klass = kinds.has('MWr') && kinds.has('CplD') ? 'shared' : kinds.has('MWr') ? 'posted' :
         kinds.has('CplD') ? 'completion' : kinds.size ? 'request' : 'idle';
       group.setAttribute('class', `wire ${klass}`);
+      group.setAttribute('data-capacity', budget.link.budgetGBps);
       if (budget.bounds[0]?.id === id || budget.bounds[0]?.id.startsWith(`${id}:`)) group.dataset.bottleneck = '';
       group.setAttribute('data-traffic', [...kinds].sort().join(' '));
       draw(group, 'rect', { x: start, y: y - 10, width: end - start, height: 21, rx: 3, class: 'wire-hit' });
@@ -174,7 +185,9 @@ export function drawTopology(host, budget, simulation, select, format) {
       draw(group, 'rect', { x: center - 34, y: labelY - 7, width: 68, height: 14, rx: 4, class: 'wire-label' });
       draw(group, 'text', { x: center, y: labelY + 3.5, 'text-anchor': 'middle', class: 'wire-value' },
         wire ? `${format(wire.measuredUtilization * 100)}%` : kinds.size ? [...kinds].join('+') : '空闲');
-      draw(group, 'title', {}, `${id} · ${[...kinds].join(' + ') || '空闲'}${wire ? ` · ${format(wire.measuredGBps)} GB/s` : ''}`);
+      draw(group, 'title', {}, `${id} · ${[...kinds].join(' + ') || '空闲'}` +
+        `${wire ? ` · 实测 ${format(wire.measuredGBps)} GB/s（${format(wire.measuredUtilization * 100)}%）` : ''}` +
+        ` · 每向容量 ${format(budget.link.budgetGBps)} GB/s`);
       draw(svg, 'text', { x: center, y: ay + 66 + index * 15, 'text-anchor': 'middle', class: 'chip-subtitle' },
         `${index ? 'RX ← TX' : 'TX → RX'} · ${[...kinds].join(' + ') || '空闲'}`);
       const marks = rttMarks.get(id);
@@ -210,13 +223,30 @@ export function drawTopology(host, budget, simulation, select, format) {
     factors.forEach((factor, index) => draw(group, 'text', {
       x: x + width / 2, y: y + 44 + index * 12, 'text-anchor': 'middle', class: 'factor-label',
     }, factor));
+    const suffixes = new Set(['tx', 'rx', 'AR', 'W', 'R', 'B', 'request', 'response']);
+    const pools = simulation?.resources.filter(item => item.id === id ||
+      (item.id.startsWith(`${id}:`) && suffixes.has(item.id.slice(id.length + 1)))) ?? [];
+    const load = pools.length ? pools.reduce((sum, item) => sum + (item.utilization ?? 0), 0) / pools.length : 0;
+    const waitNs = pools.reduce((sum, item) => sum + (item.waitNs ?? 0), 0);
+    group.dataset.load = format(Math.min(1, load) * 100);
+    if (pools.length) group.dataset.wait = format(waitNs);
+    draw(group, 'rect', { x: x + 4, y: y + 64, width: width - 8, height: 2.5, rx: 1.25, class: 'load-track' });
+    if (load > 0) {
+      draw(group, 'rect', { x: x + 4, y: y + 64, width: (width - 8) * Math.min(1, load), height: 2.5, rx: 1.25,
+        class: `load-fill ${load >= .8 ? 'high' : load >= .5 ? 'mid' : 'low'}` });
+    }
+    draw(group, 'title', {}, `${title} · ${id}${pools.length ? ` · 占用 ${format(Math.min(1, load) * 100)}%` : ''}` +
+      `${waitNs ? ` · 累计等待 ${format(waitNs)} ns` : ''}`);
     const resourceKeys = [id];
     if (bridgeOwner) resourceKeys.push(...['axi-read', 'axi-write'].map(key => `${bridgeOwner.path.requester}:${key}`));
     for (const requester of requesterOf[id] ?? []) {
       resourceKeys.push(...['tags', 'completion', 'write-buffer'].map(key => `${requester}:${key}`));
     }
     const bottleneck = budget.bounds[0]?.id;
-    if (resourceKeys.some(key => bottleneck === key || bottleneck?.startsWith(`${key}:`))) group.dataset.bottleneck = '';
+    if (resourceKeys.some(key => bottleneck === key || bottleneck?.startsWith(`${key}:`))) {
+      group.dataset.bottleneck = '';
+      draw(group, 'text', { x: x + width - 5, y: y + 10, 'text-anchor': 'end', class: 'bottleneck-tag' }, '瓶颈');
+    }
     locations.set(id, { x: x + width / 2, y: y + 21, lower: y + 62, group });
   }
   const overlay = draw(svg, 'g', { 'aria-hidden': 'true', class: 'flow-overlay' });
@@ -388,6 +418,12 @@ export function drawTopology(host, budget, simulation, select, format) {
     for (const badge of milestones.querySelectorAll('[data-stop]')) {
       badge.setAttribute('aria-pressed', String(Number(badge.dataset.stop) === index));
     }
+  };
+  render.focus = id => {
+    for (const { group } of locations.values()) group.classList.remove('hop-focus');
+    const location = id && locations.get(id);
+    location?.group.classList.add('hop-focus');
+    return Boolean(location);
   };
   return render;
 }

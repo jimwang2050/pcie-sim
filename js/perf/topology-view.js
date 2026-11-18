@@ -69,6 +69,11 @@ export function drawTopology(host, budget, simulation, select, format) {
     ['epA.PHY', 'swA.PHY', 'epA>sw', 'sw>epA'],
     ['swB.PHY', 'epB.PHY', 'sw>epB', 'epB>sw'],
   ] : [['rc.PHY', 'epA.PHY', 'rc>epA', 'epA>rc']];
+  const portSide = new Map();
+  for (const [first, second] of cables) {
+    portSide.set(first, 'right');
+    portSide.set(second, 'left');
+  }
   const activity = new Map();
   const rttMarks = new Map();
   const mark = (id, label) => rttMarks.set(id, [...(rttMarks.get(id) ?? []), label]);
@@ -179,8 +184,6 @@ export function drawTopology(host, budget, simulation, select, format) {
       const arrowX = center + direction * 52;
       draw(group, 'path', { d: `M${arrowX - direction * 9} ${y - 6} L${arrowX} ${y} L${arrowX - direction * 9} ${y + 6} Z`,
         class: 'wire-direction-arrow' });
-      draw(group, 'text', { x: start + 10, y: y + 3.5, class: 'wire-end-label' }, index ? 'RX' : 'TX');
-      draw(group, 'text', { x: end - 10, y: y + 3.5, 'text-anchor': 'end', class: 'wire-end-label' }, index ? 'TX' : 'RX');
       const labelY = y + (index ? 13 : -13);
       draw(group, 'rect', { x: center - 34, y: labelY - 7, width: 68, height: 14, rx: 4, class: 'wire-label' });
       draw(group, 'text', { x: center, y: labelY + 3.5, 'text-anchor': 'middle', class: 'wire-value' },
@@ -217,12 +220,33 @@ export function drawTopology(host, budget, simulation, select, format) {
       id.endsWith('.DMA') ? [`窗口 ${model.dmaOps} 笔`, `${format(model.dmaBytes / 1024)} KiB 在途`] :
       targets.has(id) ? [`R/W ${node.bandwidth}/${node.writeGBps} GB/s`, `L₀ ${node.latencyNs} ns`] :
       [`L₀ ${node.latencyNs} ns`, ...(width >= 76 ? [`${node.bandwidth} GB/s`] : [])];
-    draw(group, 'rect', { x, y, width, height: 62, rx: 5, class: 'hardware-body' });
-    draw(group, 'text', { x: x + width / 2, y: y + 18, 'text-anchor': 'middle', class: 'hardware-title' }, title);
-    draw(group, 'text', { x: x + width / 2, y: y + 31, 'text-anchor': 'middle', class: 'chip-subtitle' }, subtitle);
-    factors.forEach((factor, index) => draw(group, 'text', {
-      x: x + width / 2, y: y + 44 + index * 12, 'text-anchor': 'middle', class: 'factor-label',
-    }, factor));
+    const side = portSide.get(id);
+    if (side) {
+      const right = side === 'right';
+      const linkX = right ? x + width - 4 : x + 4;
+      const outerX = right ? x + 4 : x + width - 4;
+      const linkAnchor = right ? 'end' : 'start';
+      const outerAnchor = right ? 'start' : 'end';
+      const top = right ? 'TX' : 'RX';
+      const bottom = right ? 'RX' : 'TX';
+      draw(group, 'rect', { x, y, width, height: 28, rx: 5, class: 'hardware-body lane' });
+      draw(group, 'rect', { x, y: y + 34, width, height: 28, rx: 5, class: 'hardware-body lane' });
+      draw(group, 'text', { x: outerX, y: y + 17.5, 'text-anchor': outerAnchor,
+        class: 'hardware-title lane-title' }, title);
+      draw(group, 'text', { x: linkX, y: y + 17.5, 'text-anchor': linkAnchor,
+        class: `port-label ${top === 'TX' ? 'tx' : 'rx'}` }, top);
+      draw(group, 'text', { x: linkX, y: y + 51.5, 'text-anchor': linkAnchor,
+        class: `port-label ${bottom === 'TX' ? 'tx' : 'rx'}` }, bottom);
+      draw(group, 'text', { x: outerX, y: y + 51.5, 'text-anchor': outerAnchor,
+        class: 'factor-label' }, `L₀ ${node.latencyNs}`);
+    } else {
+      draw(group, 'rect', { x, y, width, height: 62, rx: 5, class: 'hardware-body' });
+      draw(group, 'text', { x: x + width / 2, y: y + 18, 'text-anchor': 'middle', class: 'hardware-title' }, title);
+      draw(group, 'text', { x: x + width / 2, y: y + 31, 'text-anchor': 'middle', class: 'chip-subtitle' }, subtitle);
+      factors.forEach((factor, index) => draw(group, 'text', {
+        x: x + width / 2, y: y + 44 + index * 12, 'text-anchor': 'middle', class: 'factor-label',
+      }, factor));
+    }
     const suffixes = new Set(['tx', 'rx', 'AR', 'W', 'R', 'B', 'request', 'response']);
     const pools = simulation?.resources.filter(item => item.id === id ||
       (item.id.startsWith(`${id}:`) && suffixes.has(item.id.slice(id.length + 1)))) ?? [];
@@ -235,7 +259,8 @@ export function drawTopology(host, budget, simulation, select, format) {
       draw(group, 'rect', { x: x + 4, y: y + 64, width: (width - 8) * Math.min(1, load), height: 2.5, rx: 1.25,
         class: `load-fill ${load >= .8 ? 'high' : load >= .5 ? 'mid' : 'low'}` });
     }
-    draw(group, 'title', {}, `${title} · ${id}${pools.length ? ` · 占用 ${format(Math.min(1, load) * 100)}%` : ''}` +
+    draw(group, 'title', {}, `${title} · ${side ? `${subtitle} · ` : ''}${id}` +
+      `${pools.length ? ` · 占用 ${format(Math.min(1, load) * 100)}%` : ''}` +
       `${waitNs ? ` · 累计等待 ${format(waitNs)} ns` : ''}`);
     const resourceKeys = [id];
     if (bridgeOwner) resourceKeys.push(...['axi-read', 'axi-write'].map(key => `${bridgeOwner.path.requester}:${key}`));
@@ -245,7 +270,8 @@ export function drawTopology(host, budget, simulation, select, format) {
     const bottleneck = budget.bounds[0]?.id;
     if (resourceKeys.some(key => bottleneck === key || bottleneck?.startsWith(`${key}:`))) {
       group.dataset.bottleneck = '';
-      draw(group, 'text', { x: x + width - 5, y: y + 10, 'text-anchor': 'end', class: 'bottleneck-tag' }, '瓶颈');
+      draw(group, 'text', { x: x + width - 5, y: y + (side ? -5 : 10), 'text-anchor': 'end',
+        class: 'bottleneck-tag' }, '瓶颈');
     }
     locations.set(id, { x: x + width / 2, y: y + 21, lower: y + 62, group });
   }

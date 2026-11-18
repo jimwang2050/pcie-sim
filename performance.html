@@ -191,7 +191,7 @@ B_tag     ≈ N_tag × 每笔 MRd 平均有效字节 / H_tag</pre>
         <p id="flow-activity"></p>
         <div id="flow-events"></div>
       </div>
-      <p class="hint board-note">每对方向线代表一个全双工 PCIe Link，百分比为仿真方向占用率；节点底部细条为资源占用率，金色边框与“瓶颈”标记解析最紧约束。延迟构成按首跳 MRd 发送 → 首片 CplD 抵达逐跳拆解，色块宽度为占比，斜纹为等待。FC 数值是各类别独立的 Header/Data 额度及回补延迟。</p>
+      <p class="hint board-note">每对方向线代表一个全双工 PCIe Link，百分比为仿真方向占用率；RP / EP / 交换端口的 PHY 拆成上下两条 TX/RX 通路，与链路双线一一对应。节点底部细条为资源占用率，金色边框与“瓶颈”标记解析最紧约束。延迟构成按首跳 MRd 发送 → 首片 CplD 抵达逐跳拆解，色块宽度为占比，斜纹为等待。FC 数值是各类别独立的 Header/Data 额度及回补延迟。</p>
       <p id="node-detail" aria-live="polite"></p>
     </section>
     <div class="grid">

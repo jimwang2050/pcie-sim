@@ -154,6 +154,18 @@ test('拓扑节点显示仿真占用条与解析瓶颈标记', async ({ page }) 
   await expect(page.locator('#topology [data-node="host.CMN"] .bottleneck-tag')).toHaveText('瓶颈');
 });
 
+test('播放速度支持 1× 到 32×，32× 可在数秒内播完', async ({ page }) => {
+  await page.goto('performance.html');
+  await expect(page.getByRole('status')).toContainText('已完成');
+  const speed = page.getByLabel('播放速度');
+  await expect(speed.locator('option')).toHaveText(['1×', '2×', '4×', '8×', '16×', '32×']);
+  await speed.selectOption('32');
+  await page.getByRole('button', { name: '播放', exact: true }).click();
+  await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '播放', exact: true })).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('#flow-clock')).toHaveValue('10000');
+});
+
 test('duplex P2P renders shared wires and exports results on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 850 });
   await page.goto('performance.html');

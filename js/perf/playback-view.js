@@ -10,15 +10,16 @@ export function createPlayback(get, format, syncTimeline) {
   const picker = get('flow-sample');
   const slider = get('flow-clock');
   const layer = get('flow-layer');
+  const speed = get('flow-speed');
   const play = get('play-flow');
   let renderBoard, trace = [], services = [], markers = [], ticks = [], byTime = new Map();
-  let origin = 0, span = 0, position = 0, frame = null, started = null;
-  let stepIndex = 0;
+  let origin = 0, span = 0, position = 0, frame = null;
+  let stepIndex = 0, segments = [], startPosition = 0, baseElapsed = 0, lastFrame = null;
 
   function pause() {
     if (frame !== null) cancelAnimationFrame(frame);
     frame = null;
-    started = null;
+    lastFrame = null;
     play.textContent = '播放';
   }
 
@@ -49,6 +50,22 @@ export function createPlayback(get, format, syncTimeline) {
     stepIndex = Math.max(0, ticks.findLastIndex(time => time <= to));
   }
 
+  function positionAt(from, elapsed) {
+    let remaining = elapsed;
+    let index = segments.findIndex(segment => segment.to > from);
+    if (index < 0) return span;
+    const first = segments[index];
+    remaining += Math.min(1, (from - first.from) / (first.to - first.from)) * first.duration;
+    for (; index < segments.length; index++) {
+      const segment = segments[index];
+      if (remaining < segment.duration) {
+        return segment.from + (segment.to - segment.from) * (remaining / segment.duration);
+      }
+      remaining -= segment.duration;
+    }
+    return span;
+  }
+
   function select(value) {
     pause();
     picker.value = value;
@@ -64,6 +81,12 @@ export function createPlayback(get, format, syncTimeline) {
     }
     ticks = [...byTime.keys()];
     span = ticks.at(-1) ?? 0;
+    segments = [];
+    for (let index = 0; index < ticks.length - 1; index++) {
+      const from = ticks[index];
+      const to = ticks[index + 1];
+      segments.push({ from, to, duration: Math.max(160, (to - from) / (span || 1) * 8500) });
+    }
     move(0);
     play.disabled = !span;
     paint();
@@ -73,21 +96,20 @@ export function createPlayback(get, format, syncTimeline) {
     if (frame !== null) { pause(); return; }
     if (!span) return;
     if (position === span) move(0);
-    let initial = position;
+    startPosition = position;
+    baseElapsed = 0;
+    lastFrame = null;
     play.textContent = '暂停';
     const tick = time => {
-      started ??= time;
-      const next = ticks[stepIndex + 1] ?? span;
-      const duration = Math.max(160, (next - initial) / span * 8500);
-      const progress = Math.min(1, (time - started) / duration);
-      if (progress === 1) {
-        move(next);
-        started = time;
-        initial = position;
-      } else position = initial + (next - initial) * progress;
+      if (lastFrame === null) lastFrame = time;
+      const rate = Number(speed?.value) || 1;
+      baseElapsed += Math.max(0, time - lastFrame) * rate;
+      lastFrame = time;
+      position = positionAt(startPosition, baseElapsed);
+      move(position);
       paint();
-      if (position >= span) pause();
-      else frame = requestAnimationFrame(tick);
+      if (position >= span) { pause(); return; }
+      frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
   });

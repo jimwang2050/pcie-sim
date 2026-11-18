@@ -25,18 +25,20 @@ test('CMN system interconnect defaults to 64 GB/s and is configurable', () => {
 
 test('RC Bridge presets separate AXI physical peak from effective capacity', () => {
   assert.deepEqual(rcBridgePreset(6, 16), {
-    widthBits: 1024, clockGHz: 1, interfacePeakGBps: 128, bandwidthGBps: 64,
+    widthBits: 1024, clockGHz: 1, interfacePeakGBps: 128, linkGBps: 128, bandwidthGBps: 128,
   });
   assert.deepEqual([rcBridgePreset(6, 8), rcBridgePreset(5, 8), rcBridgePreset(5, 16)]
     .map(item => [item.widthBits, item.bandwidthGBps]), [[512, 64], [256, 32], [512, 64]]);
+  // Gen4 的 AXI 接口宽于链路：预设有效上限对齐链路 16 GB/s，而不是接口峰值 32 GB/s
+  assert.deepEqual([rcBridgePreset(4, 8).interfacePeakGBps, rcBridgePreset(4, 8).bandwidthGBps], [32, 16]);
   const preset = configFor({ gen: 6, lanes: 16 });
   assert.equal(profile(preset, 'rc.AXI').interfacePeakGBps, 128);
-  assert.equal(profile(preset, 'rc.AXI').bandwidth, 64);
+  assert.equal(profile(preset, 'rc.AXI').bandwidth, 128);
   const budget = analyze([{ scenario: 'ep-ddr', readPct: 50, count: 2 }], { gen: 6, lanes: 16 });
   assert.equal(budget.rcBridge.widthBits, 1024);
   assert.equal(budget.rcBridge.clockGHz, 1);
   assert.equal(budget.rcBridge.interfacePeakGBps, 128);
-  assert.equal(budget.rcBridge.effectiveGBps, 64);
+  assert.equal(budget.rcBridge.effectiveGBps, 128);
   const custom = configFor({ rcAxiWidthBits: 384, rcAxiClockGHz: 1.25, rcBridgeBandwidthGBps: 48 });
   assert.equal(profile(custom, 'rc.AXI').bandwidth, 48);
   assert.throws(() => configFor({ rcAxiWidthBits: 256, rcAxiClockGHz: 1, rcBridgeBandwidthGBps: 64 }),
@@ -92,7 +94,8 @@ test('512B EP read follows hand-calculated one-packet request and split Completi
   const sim = simulate(specs, { nfmAvailability: 1 });
   const rate = 16 * 128 / 130;
   const fixed = 18 * 2 + 12 * 2 + 5 + 12 + 28;
-  const cycle = 2 / 64 + 2 / 128 + 1 / rate + 1 / 32 + 1 / 64;
+  // Gen4 ×8 的 RC Bridge 预设与链路对齐：16 GB/s（AXI 物理峰值为 32 GB/s）
+  const cycle = 2 / 64 + 2 / 128 + 1 / rate + 1 / 16 + 1 / 64;
   const request = fixed + 24 * cycle;
   const reply = fixed + 276 * cycle;
   const service = 95 + 512 / 32;

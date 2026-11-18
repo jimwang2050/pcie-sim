@@ -28,12 +28,15 @@ function inRange(value, min, max) {
 
 export function rcBridgePreset(gen, lanes) {
   const bitsPerLane = { 4: 32, 5: 32, 6: 64 }[gen];
+  const gts = { 4: 16, 5: 32, 6: 64 }[gen];
   if (!bitsPerLane || ![1, 2, 4, 8, 16].includes(lanes)) throw new RangeError('RC Bridge preset');
   const widthBits = bitsPerLane * lanes;
   const clockGHz = 1;
   const interfacePeakGBps = widthBits / 8 * clockGHz;
-  return { widthBits, clockGHz, interfacePeakGBps,
-    bandwidthGBps: gen === 6 && lanes === 16 ? 64 : interfacePeakGBps };
+  const linkGBps = gts * lanes / 8;
+  // 预设有效上限尽量与链路带宽对齐，且不超过 AXI 物理峰值。
+  const bandwidthGBps = Math.min(interfacePeakGBps, linkGBps);
+  return { widthBits, clockGHz, interfacePeakGBps, linkGBps, bandwidthGBps };
 }
 
 export function configFor(input = {}) {

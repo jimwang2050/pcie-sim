@@ -159,19 +159,19 @@ test('RC Bridge 分层显示 AXI 物理峰值与桥接器有效上限', async ({
   await expect(page.locator('#rc-axi-preset')).toContainText('256 bit × 1 GHz = 32 GB/s 物理峰值');
   await page.getByLabel('速率').selectOption('6');
   await page.getByLabel('链路宽度').selectOption('16');
-  // Gen6 ×16：1024 bit × 1 GHz = 128 GB/s 物理峰值，策略有效上限 64 GB/s
+  // Gen6 ×16：1024 bit × 1 GHz = 128 GB/s 物理峰值，预设有效上限与链路一致（128 GB/s）
   await expect(page.locator('#rc-axi-preset')).toContainText('1024 bit × 1 GHz = 128 GB/s 物理峰值');
-  await expect(page.locator('#rc-axi-preset')).toContainText('Bridge 有效上限 64 GB/s');
+  await expect(page.locator('#rc-axi-preset')).toContainText('Bridge 有效上限 128 GB/s');
   await expect(page.locator('input[name="rcAxiWidthBits"]')).toHaveValue('1024');
   await expect(page.locator('input[name="rcAxiClockGHz"]')).toHaveValue('1');
-  await expect(page.locator('input[name="rcBridgeBandwidthGBps"]')).toHaveValue('64');
+  await expect(page.locator('input[name="rcBridgeBandwidthGBps"]')).toHaveValue('128');
 
   await page.getByRole('button', { name: '运行模型' }).click();
   await expect(page.getByRole('status')).toContainText('Gen6 解析预算');
   await expect(page.locator('#ideal-calculation')).toContainText('1024 bit × 1 GHz = 128 GB/s 物理峰值');
-  await expect(page.locator('#ideal-calculation')).toContainText('桥接器有效上限 64 GB/s');
+  await expect(page.locator('#ideal-calculation')).toContainText('桥接器有效上限 128 GB/s');
 
-  // 手动把宽度改小：物理峰值 32 GB/s 低于有效上限 64 GB/s，必须报错而不是静默通过
+  // 手动把宽度改小：物理峰值 32 GB/s 低于有效上限 128 GB/s，必须报错而不是静默通过
   await page.locator('input[name="rcAxiWidthBits"]').evaluate(el => { el.value = '256'; });
   await page.getByRole('button', { name: '运行模型' }).click();
   await expect(page.getByRole('status')).toContainText('无法计算');

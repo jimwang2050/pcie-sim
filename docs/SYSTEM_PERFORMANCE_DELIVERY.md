@@ -31,19 +31,20 @@ node scripts/perf.mjs simulate --config docs/perf-p2p-duplex.json
 
 ### RC Bridge 两层能力
 
-物理 AXI 接口与桥接器策略分开，避免把 1024 bit × 1 GHz 误解成 64 GB/s：
+物理 AXI 接口与桥接器策略分开，预设有效上限尽量与链路带宽对齐，避免把 1024 bit × 1 GHz 误解成 64 GB/s：
 
 | 概念 | 计算 | Gen6 ×16 示例 |
 | --- | --- | --- |
 | AXI 物理峰值 | `widthBits / 8 × clockGHz` | 1024 / 8 × 1 = **128 GB/s** |
-| Bridge 有效上限 | 产品策略（可配置） | **64 GB/s** |
+| Bridge 有效上限 | 预设 = `min(物理峰值, 链路原始带宽)`，可配置 | **128 GB/s** |
 
-| Gen / Lane | AXI 宽度 | 时钟 | 物理峰值 | 预设有效上限 |
-| --- | ---: | ---: | ---: | ---: |
-| Gen4 ×8 | 256 bit | 1 GHz | 32 GB/s | 32 GB/s |
-| Gen5 ×16 | 512 bit | 1 GHz | 64 GB/s | 64 GB/s |
-| Gen6 ×8 | 512 bit | 1 GHz | 64 GB/s | 64 GB/s |
-| Gen6 ×16 | 1024 bit | 1 GHz | 128 GB/s | 64 GB/s |
+| Gen / Lane | AXI 宽度 | 时钟 | 物理峰值 | 链路原始 | 预设有效上限 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Gen4 ×8 | 256 bit | 1 GHz | 32 GB/s | 16 GB/s | 16 GB/s |
+| Gen5 ×8 | 256 bit | 1 GHz | 32 GB/s | 32 GB/s | 32 GB/s |
+| Gen5 ×16 | 512 bit | 1 GHz | 64 GB/s | 64 GB/s | 64 GB/s |
+| Gen6 ×8 | 512 bit | 1 GHz | 64 GB/s | 64 GB/s | 64 GB/s |
+| Gen6 ×16 | 1024 bit | 1 GHz | 128 GB/s | 128 GB/s | 128 GB/s |
 
 预设按 Gen/Lane 自动套用（Gen4/5 每 Lane 32 bit，Gen6 每 Lane 64 bit，时钟 1 GHz），三个输入仍可手动覆盖。有效上限超过物理峰值会被拒绝（CLI 报错、页面显示「无法计算」），不会静默截断。解析结果里的 `rcBridge` 同时给出 `interfacePeakGBps` 与 `effectiveGBps`；页面的参数区与「理想吞吐」说明都会分开显示这两个数。
 
@@ -64,9 +65,9 @@ node scripts/perf.mjs simulate --config docs/perf-p2p-duplex.json
 
 | 发起路径 | 纯读 | 50:50 | 纯写 |
 | --- | ---: | ---: | ---: |
-| EP DMA → 主机 DDR | 13.84 | 17.55 | 13.83 |
-| CPU → EP BAR | 0.012 | 0.020 | 0.065 |
-| Host DMA ↔ EP HBM | 13.58 | 17.53 | 13.37 |
+| EP DMA → 主机 DDR | 13.83 | 17.42 | 13.82 |
+| CPU → EP BAR | 0.012 | 0.020 | 0.066 |
+| Host DMA ↔ EP HBM | 13.58 | 17.91 | 13.48 |
 | EP A → Switch → EP B | 13.72 | 24.49 | 13.76 |
 
 同 Switch 50:50 的 24.49 GB/s 是两个方向交付的业务字节合计；每向仍独立受自身容量约束。双端样例则验证了 A 写 B 与 B 读 A 的返回数据会竞争同一方向。

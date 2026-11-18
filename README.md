@@ -12,7 +12,7 @@
 
 本地运行 `npm run serve` 后，从首页进入「性能实验室」。页面支持路径切换、参数扫描式试跑、逐节点资源明细和单笔事务时间线。
 
-RC Bridge 分成两层显示：AXI 物理峰值（`宽度/8 × 频率`，Gen6 ×16 为 1024 bit × 1 GHz = 128 GB/s）与桥接器有效上限（默认策略 64 GB/s）。Gen/Lane 变化会自动套用预设，三个参数仍可手动覆盖，有效上限超过物理峰值会被拒绝。
+RC Bridge 分成两层显示：AXI 物理峰值（`宽度/8 × 频率`，Gen6 ×16 为 1024 bit × 1 GHz = 128 GB/s）与桥接器有效上限（预设与链路带宽对齐，Gen6 ×16 为 128 GB/s）。Gen/Lane 变化会自动套用预设，三个参数仍可手动覆盖，有效上限超过物理峰值会被拒绝。
 
 用 `node scripts/perf.mjs matrix --count 256` 运行纯读、纯写、读写混合的系统性能对照。可评估 EP DMA ↔ 主机 DDR、CPU/主机 DMA ↔ EP、同 Switch P2P，输出带宽、延迟、Tag、AXI 与逐跳 Credit 的等待。参数、JSON 导出和适用范围见[性能模型交付说明](docs/SYSTEM_PERFORMANCE_DELIVERY.md)。
 

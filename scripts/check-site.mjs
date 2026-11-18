@@ -73,27 +73,30 @@ async function listJs(dir) {
   return out;
 }
 
-const indexFile = path.join(root, 'index.html');
-const html = await readFile(indexFile, 'utf8');
-const refs = htmlRefs(html);
-
-if (!refs.length) errors.push('index.html 没有本地资源引用');
-for (const ref of refs) {
-  if (ref.startsWith('/')) errors.push(`绝对路径会破坏子路径部署：${ref}`);
-  const file = path.resolve(root, ref);
-  if (!(await exists(file))) errors.push(`index.html 引用缺失：${ref}`);
-  seen.add(rel(file));
+const entries = {};
+for (const page of ['index.html', 'performance.html']) {
+  const refs = htmlRefs(await readFile(path.join(root, page), 'utf8'));
+  seen.add(page);
+  for (const ref of refs) {
+    if (ref.startsWith('/')) errors.push(`绝对路径会破坏子路径部署：${ref}`);
+    const file = path.resolve(root, ref);
+    if (!(await exists(file))) errors.push(`${page} 引用缺失：${ref}`);
+    seen.add(rel(file));
+  }
+  const entry = refs.find(ref => ref.endsWith('.js'));
+  if (!entry) errors.push(`${page} 未引用入口模块`);
+  else {
+    entries[page] = entry;
+    await walkModules(path.resolve(root, entry));
+  }
 }
-
-const entry = refs.find((r) => r.endsWith('.js'));
-if (!entry) errors.push('index.html 未引用入口模块');
-else await walkModules(path.resolve(root, entry));
 
 if (!(await exists(path.join(root, '.nojekyll')))) errors.push('缺少 .nojekyll（GitHub Pages 需要）');
 
 const allJs = await listJs(path.join(root, 'js'));
 for (const file of allJs) {
-  if (!seen.has(rel(file))) warnings.push(`未被入口引用的模块：${rel(file)}`);
+  const modulePath = rel(file);
+  if (!seen.has(modulePath)) warnings.push(`未被入口引用的模块：${modulePath}`);
 }
 
 // 运行时不应依赖测试、文档或脚本目录
@@ -129,7 +132,8 @@ if (base) {
 }
 
 const summary = {
-  entry,
+  entry: entries['index.html'],
+  entries,
   files: seen.size,
   warnings,
   errors,

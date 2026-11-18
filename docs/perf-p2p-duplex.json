@@ -1,0 +1,17 @@
+{
+  "model": {
+    "gen": 5,
+    "lanes": 8,
+    "p2p": "direct",
+    "source": "example",
+    "nodes": {
+      "epA.AXI": { "widthBits": 256, "clockGHz": 1, "latencyNs": 12 },
+      "sw.fabric": { "bandwidth": 40 }
+    }
+  },
+  "flows": [
+    { "scenario": "p2p", "readPct": 0, "writeBytes": 512, "count": 256, "intervalNs": 40 },
+    { "scenario": "p2p-reverse", "readPct": 100, "readBytes": 512, "count": 256, "intervalNs": 40 }
+  ],
+  "options": { "startNs": 1000, "endNs": 10000, "traceOps": 1 }
+}

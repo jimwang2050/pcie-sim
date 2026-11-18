@@ -59,6 +59,7 @@ html[data-theme="light"] .topo-bus {
 }
 
 .brand { display: flex; align-items: center; gap: 10px; }
+.perf-entry { color: #7dd3fc; font-size: 12px; white-space: nowrap; }
 
 .logo {
   display: inline-flex;

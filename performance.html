@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCIe 系统性能实验室</title>
+<link rel="stylesheet" href="css/performance.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<main>
+  <nav><a href="index.html">← 协议演示</a><span>PCIe SIM / PERFORMANCE</span></nav>
+  <header>
+    <h1>PCIe 系统性能实验室</h1>
+    <p>沿 CPU、DMA、CMN、控制器与物理链路追踪每笔读写，找出限制带宽的节点。</p>
+  </header>
+  <form id="controls" class="panel">
+    <div class="fields">
+      <label>访问路径 <select name="scenario"><option value="ep-ddr">EP DMA → 主机 DDR</option><option value="cpu-bar">CPU → EP BAR</option><option value="host-dma">主机 DMA ↔ EP HBM</option><option value="p2p">EP A → Switch → EP B</option><option value="p2p-reverse">EP B → Switch → EP A</option><option value="duplex">双端 P2P：A 写 B + B 读 A</option></select></label>
+      <label>读写配比（字节） <select name="readPct"><option value="100">纯读 100:0</option><option value="75">读多 75:25</option><option value="50" selected>混合 50:50</option><option value="25">写多 25:75</option><option value="0">纯写 0:100</option></select></label>
+      <label>速率 <select name="gen"><option value="4">Gen4</option><option value="5">Gen5</option><option value="6">Gen6（解析）</option></select></label>
+      <label>链路宽度 <select name="lanes"><option value="1">×1</option><option value="2">×2</option><option value="4">×4</option><option value="8" selected>×8</option><option value="16">×16</option></select></label>
+    </div>
+    <p id="rc-axi-preset" class="hint rc-axi-preset"></p>
+    <details><summary>调整节点与负载参数</summary><div class="fields advanced">
+      <label>读大小（B） <input name="readBytes" type="number" value="512" min="4" max="65536" step="4"></label>
+      <label>写大小（B） <input name="writeBytes" type="number" value="512" min="4" max="65536" step="4"></label>
+      <label>操作数 / 流 <input name="count" type="number" value="128" min="1" max="1024" required></label>
+      <label>提交间隔（ns） <input name="intervalNs" type="number" value="0" min="0" step="any" required></label>
+      <label>有效 Tag <input name="tags" type="number" value="32" min="1" max="256" required></label>
+      <label>AXI 读并发 <input name="axiRead" type="number" value="32" min="1" max="256" required></label>
+      <label>AXI 写并发 <input name="axiWrite" type="number" value="32" min="1" max="256" required></label>
+      <label>CMN 系统互连（GB/s） <input name="cmnBandwidthGBps" type="number" value="64" min="0.1" max="4096" step="0.1" required></label>
+      <label>RC AXI 宽度（bit） <input name="rcAxiWidthBits" type="number" value="128" min="8" max="4096" step="8" required></label>
+      <label>RC AXI 频率（GHz） <input name="rcAxiClockGHz" type="number" value="1" min="0.01" max="16" step="0.01" required></label>
+      <label>RC Bridge 有效上限（GB/s） <input name="rcBridgeBandwidthGBps" type="number" value="16" min="0.01" max="4096" step="0.01" required></label>
+      <label>Credit 回补（ns） <input name="creditReturnNs" type="number" value="100" min="0" step="any" required></label>
+      <label>MPS（B） <select name="mps"><option>128</option><option selected>256</option><option>512</option><option>1024</option><option>2048</option><option>4096</option></select></label>
+      <label>MRRS（B） <select name="mrrs"><option>128</option><option>256</option><option selected>512</option><option>1024</option><option>2048</option><option>4096</option></select></label>
+      <label>Data Credit / 类 <input name="creditData" type="number" value="128" min="1" max="65536" required></label>
+    </div></details>
+    <div class="actions"><button type="submit">运行模型</button><button type="button" id="download" disabled>导出结果 JSON</button><span id="status" role="status" aria-live="polite"></span></div>
+  </form>
+  <div id="results" hidden>
+    <section class="panel" aria-labelledby="topology-title">
+      <div class="section-title"><h2 id="topology-title">硬件互连拓扑</h2><span>点击硬件模块或方向连线查看资源明细</span></div>
+      <div id="topology"></div>
+      <section id="txn-route" class="txn-route" hidden aria-label="单笔事务拓扑时间线">
+        <div class="section-title"><h3>单笔事务 · 拓扑时间线</h3><div><label for="trace-op">操作</label><select id="trace-op"></select></div></div>
+        <p id="txn-route-note" class="hint"></p>
+        <div id="txn-stops" class="txn-stops"></div>
+        <p id="txn-focus" class="txn-focus" aria-live="polite"></p>
+        <label>记录视图 <select id="trace-view"><option value="events">完整事件记录</option><option value="rtt">架构图 · 静态 RTT 标定</option></select></label>
+        <div id="rtt-static" hidden>
+          <label>MRd 子事务 <select id="rtt-txn"></select></label>
+          <p id="rtt-static-summary" class="hint"></p>
+        </div>
+        <details id="timeline-card">
+          <summary>展开完整事件记录</summary>
+          <p id="trace-note"></p>
+          <div id="timeline"></div>
+        </details>
+      </section>
+      <div id="metric-map" class="metric-map"></div>
+      <details class="metric-formulas">
+        <summary>计算公式与计量边界</summary>
+        <dl>
+          <dt>业务吞吐与方向占用</dt>
+          <dd><code>B = Σ 已交付业务字节 / Δt</code>；<code>ρℓ = 方向线上字节 / (Δt × Cℓ)</code>。读以可消费、写以目标可见为准。</dd>
+          <dt>容量与资源上界</dt>
+          <dd><code>Cℓ = GT/s × Lane 数 / 8 × η</code>。固定业务配比下，<code>Bmax = minᵣ(Kᵣ × V / Dᵣ)</code>；<code>V</code> 为总业务字节，<code>Dᵣ</code> 为总资源占用量 × ns，<code>Kᵣ</code> 为资源并行容量。方向链路、AXI、Tag、Credit 各自约束。</dd>
+          <dt>链路理想吞吐与达成率</dt>
+          <dd><code>Wℓ = Σ MRd 包字节 + Σ MWr 包字节 + Σ CplD 包字节</code>；每包计载荷、头及本模型封包开销。<code>Tℓ = Wℓ / Cℓ</code>；各方向可并行，故 <code>Bideal = V / maxℓ(Tℓ) = minℓ(Cℓ × V / Wℓ)</code>。下表按本轮参数代入。</dd>
+          <dt>逐段递推与读 RTT</dt>
+          <dd><code>t出 = t到 + Q + L₀ + S / C + T切换</code>。Q 为该段准入等待，L₀ 为管线或传播时延，S 为本段字节数。<code>RTT首 = min(tCpl) − t₀</code>，<code>RTT末 = max(tCpl) − t₀</code>；多片按完成时间取首末，不把并行路径时延叠加。</dd>
+          <dt>Tag 与写入</dt>
+          <dd><code>BTag ≈ NTag × 平均每笔 MRd 有效字节 / 平均 Tag 持有时间</code>。持有时间从分配到回收，比链路 RTT 多计发前和接收处理。Posted MWr 单独计算提交到目标可见的延迟。</dd>
+        </dl>
+        <div id="ideal-calculation"></div>
+        <div id="ideal-directions"></div>
+      </details>
+      <div class="board-legend"><span class="request">MRd 请求</span><span class="posted">MWr 写数据</span><span class="completion">CplD 读返回</span><span class="shared">MWr 与 CplD 同向共享</span><span>灰色：本轮未使用</span></div>
+      <div id="playback" class="flow-player" hidden>
+        <div class="actions">
+          <label>播放样本 <select id="flow-sample" aria-label="播放样本"></select></label>
+          <label>流量层 <select id="flow-layer" aria-label="流量层"><option value="all">控制与数据</option><option value="control">仅控制流</option><option value="data">仅数据流</option></select></label>
+          <button type="button" id="play-flow">播放</button>
+          <button type="button" id="prev-flow">上一步</button>
+          <button type="button" id="step-flow">下一事件</button>
+          <button type="button" id="reset-flow">回到起点</button>
+        </div>
+        <label for="flow-clock">样本仿真时间 <span id="flow-time"></span></label>
+        <input id="flow-clock" type="range" min="0" max="10000" value="0">
+        <p id="flow-activity"></p>
+        <div id="flow-events"></div>
+      </div>
+      <p class="hint board-note">每对方向线代表一个全双工 PCIe Link，百分比为方向占用率；金色边框标记解析瓶颈。FC 数值是各类别独立的 Header/Data 额度及回补延迟。每步浮窗显示同一仿真时刻的关键事件，其余同刻事件可在节点明细中展开。</p>
+      <p id="node-detail" aria-live="polite"></p>
+    </section>
+    <div class="grid">
+      <section class="panel"><h2>有效带宽 <small>GB/s</small></h2><div id="bandwidth"></div></section>
+      <section class="panel"><h2>RTT 与端到端延迟 <small>ns</small></h2><div id="latency"></div></section>
+    </div>
+    <div class="grid">
+      <section class="panel"><h2>各方向链路</h2><div id="links"></div></section>
+      <section class="panel"><h2 id="resource-title">资源阻塞</h2><div id="resources"></div></section>
+    </div>
+  </div>
+  <footer>示例参数，未经硬件校准。Gen6 仅计算解析预算。延迟包含请求在注入队列的等待；资源等待可重叠。</footer>
+</main>
+<dialog id="event-inspector" aria-labelledby="inspect-title">
+  <header class="section-title">
+    <h2 id="inspect-title">拓扑事件</h2>
+    <form method="dialog"><button aria-label="关闭事件浮窗">关闭</button></form>
+  </header>
+  <details><summary>节点参数与整批资源统计</summary><p id="inspect-metrics" class="hint"></p></details>
+  <p id="inspect-scope" class="hint"></p>
+  <div id="inspect-controls" class="actions">
+    <button id="inspect-prev" type="button">上一步</button>
+    <label for="inspect-step">选择事件</label><select id="inspect-step"></select>
+    <button id="inspect-next" type="button">下一步</button>
+  </div>
+  <div id="inspect-event" aria-live="polite"></div>
+</dialog>
+<script type="module" src="js/perf/view.js"></script>
+</body>
+</html>

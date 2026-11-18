@@ -43,10 +43,11 @@ version.json   # {"version","commit","run","builtAt"}
 | --- | --- |
 | Node 回归 | 116/116 通过 |
 | 静态站点自检 | 50 个文件、0 警告、0 错误 |
-| Chromium 冒烟 | 18/18 通过 |
-| WebKit 冒烟 | 18/18 通过 |
-| Firefox 冒烟 | 本机 Playwright Firefox 无法启动（`Could not find profile folder`），由 CI（ubuntu-latest）验证 |
-| 线上身份 | 部署后 `version.json` 含真实 commit 与 run id |
+| Chromium 冒烟 | 18/18 通过（本机与 CI） |
+| WebKit 冒烟 | 18/18 通过（本机与 CI） |
+| Firefox 冒烟 | 18/18 通过（CI；本机 Playwright Firefox 无法启动，见下） |
+| 三浏览器合计 | 54/54 通过（run 44216030814） |
+| 线上身份 | `version.json` = 0.3.0 / c79cdee / run 44216030814 |
 
 ## 5. 已知限制
 

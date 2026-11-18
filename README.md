@@ -50,7 +50,7 @@
 - **跨浏览器冒烟**：Playwright 增加 Chromium / Firefox / WebKit 三个 project，CI 三套都跑；本地可用 `PCIE_BROWSER_CHANNEL=chrome` 走系统 Chrome，`PCIE_BROWSER_PROJECT=chromium` 只跑单套。
 - **发布闸门**：`test`（含站点自检）→ `browser`（三浏览器）→ `deploy`（仅 main push），前一关失败不部署。
 - **产物身份**：部署时生成 `version.json`（版本 / commit / run / 构建时间），页面「说明」面板底部显示，便于确认线上对应提交。
-- **版本**：0.3.0。回归 116 项，Chromium / WebKit 各 18 项冒烟通过；Firefox 由 CI 验证（本机 Playwright Firefox 构建无法启动）。
+- **版本**：0.3.0。回归 116 项；Chromium / Firefox / WebKit 三套浏览器冒烟 **54/54**（CI）。本机 Playwright Firefox 构建无法启动，仅影响本地复跑。
 
 发布闸门与回滚步骤见 [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)，本轮结果见 [M4_RELEASE.md](docs/M4_RELEASE.md)。
 

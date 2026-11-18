@@ -21,10 +21,13 @@
 | `npm run check:site` | **50 个文件，0 警告 0 错误** |
 | Chromium 冒烟 | **18/18 通过** |
 | WebKit 冒烟 | **18/18 通过** |
-| Firefox 冒烟（本机） | 未能启动：Playwright Firefox 在 macOS 15.7.9 报 `Could not find profile folder`（手动带 `-profile` 启动同样失败，属本机浏览器构建问题），改由 CI 验证 |
+| Firefox 冒烟（本机） | 未能启动：Playwright Firefox 在 macOS 15.7.9 报 `Could not find profile folder`（手动带 `-profile` 启动同样失败，属本机浏览器构建问题） |
+| Firefox 冒烟（CI） | **18/18 通过**（ubuntu-latest） |
+| 三浏览器合计 | **54/54 通过**（run 44216030814，54 passed） |
+| 部署产物 | `version.json` 为 `0.3.0 / c79cdee / run 44216030814`，线上可读 |
 | `git diff --check` | 通过 |
 
-CI 的 browser job 会在 ubuntu-latest 上安装三套浏览器；本次推送后以其结果为准。
+CI 的 browser job 在 ubuntu-latest 上安装三套浏览器并全部通过（54 项）；本机 Firefox 的启动问题只影响本地复跑，不影响 CI 闸门。
 
 ## 版本与产物
 

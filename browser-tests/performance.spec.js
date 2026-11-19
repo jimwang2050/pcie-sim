@@ -260,6 +260,14 @@ test('性能解读入口打开 Archify 说明页', async ({ page }) => {
   await expect(page.locator('body')).toContainText('Root Complex');
 });
 
+test('架构图总览入口打开 Archify 拓扑页', async ({ page }) => {
+  await page.goto('performance.html');
+  await page.getByRole('link', { name: '架构图总览' }).click();
+  await expect(page).toHaveTitle(/PCIe 硬件互连拓扑/);
+  await expect(page.locator('body')).toContainText('默认瓶颈');
+  await expect(page.locator('body')).toContainText('RC Bridge');
+});
+
 test('深色 / 浅色模式可切换并记住选择', async ({ page }) => {
   await page.goto('./performance.html');
   const html = page.locator('html');

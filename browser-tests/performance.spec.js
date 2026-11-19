@@ -268,20 +268,6 @@ test('架构图总览入口打开 Archify 拓扑页', async ({ page }) => {
   await expect(page.locator('body')).toContainText('RC Bridge');
 });
 
-test('动态示意入口播放 Lottie 导出的数据流', async ({ page }) => {
-  await page.goto('performance.html');
-  await expect(page.getByRole('status')).toContainText('已完成');
-  await page.getByRole('button', { name: '动态示意' }).click();
-  const dialog = page.getByRole('dialog', { name: /架构数据流/ });
-  await expect(dialog).toBeVisible();
-  const video = dialog.locator('video');
-  await expect(video.locator('source')).toHaveCount(2);
-  await expect(video.locator('source').first()).toHaveAttribute('src', 'media/pcie-flow.webm');
-  await expect(video.locator('source').nth(1)).toHaveAttribute('src', 'media/pcie-flow.mp4');
-  await dialog.getByRole('button', { name: '关闭动态示意' }).click();
-  await expect(dialog).toBeHidden();
-});
-
 test('深色 / 浅色模式可切换并记住选择', async ({ page }) => {
   await page.goto('./performance.html');
   const html = page.locator('html');

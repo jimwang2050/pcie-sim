@@ -51,7 +51,7 @@
   </form>
   <div id="results" hidden>
     <section class="panel" aria-labelledby="topology-title">
-      <div class="section-title"><h2 id="topology-title">硬件互连拓扑</h2><span>点击硬件模块或方向连线查看资源明细 · <a href="topology-guide.html">架构图总览</a> · <button type="button" id="motion-open" class="linkish">动态示意</button></span></div>
+      <div class="section-title"><h2 id="topology-title">硬件互连拓扑</h2><span>点击硬件模块或方向连线查看资源明细 · <a href="topology-guide.html">架构图总览</a></span></div>
       <div id="topology"></div>
       <section id="txn-route" class="txn-route" hidden aria-label="单笔事务拓扑时间线">
         <div class="section-title"><h3>单笔事务 · 拓扑时间线</h3><div><label for="trace-op">操作</label><select id="trace-op"></select></div></div>
@@ -219,17 +219,6 @@ B_tag     ≈ N_tag × 每笔 MRd 平均有效字节 / H_tag</pre>
     <button id="inspect-next" type="button">下一步</button>
   </div>
   <div id="inspect-event" aria-live="polite"></div>
-</dialog>
-<dialog id="motion-dialog" aria-labelledby="motion-title">
-  <header class="section-title">
-    <h2 id="motion-title">架构数据流 · 动态示意</h2>
-    <form method="dialog"><button aria-label="关闭动态示意">关闭</button></form>
-  </header>
-  <video id="motion-video" muted loop playsinline preload="metadata">
-    <source src="media/pcie-flow.webm" type="video/webm">
-    <source src="media/pcie-flow.mp4" type="video/mp4">
-  </video>
-  <p class="hint">MRd / MWr 沿 Host → RC → PCIe Link → EP 前进，CplD 沿反方向返回。动画按默认 Gen4 ×8 配置示意，不代表实时结果。</p>
 </dialog>
 <script type="module" src="js/perf/view.js"></script>
 </body>

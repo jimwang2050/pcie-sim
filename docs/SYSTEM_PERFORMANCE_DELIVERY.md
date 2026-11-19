@@ -57,7 +57,6 @@ node scripts/perf.mjs simulate --config docs/perf-p2p-duplex.json
 - 播放器支持 1× 原速与 2× / 4× / 8× / 16× / 32× 慢放；按事件时间比例推进，事件密集处保留最小停留，慢放只改变播放节奏，不改变样本与统计口径。
 - 页头「先看性能解读」链接到一页 Archify 说明（默认配置），用于快速对照拓扑、RTT 构成与瓶颈读数。
 - 拓扑区「架构图总览」链接到一页 Archify 架构图，标注默认瓶颈、RC Bridge 两层能力与 P2P 变体；实时占用与播放仍在原拓扑板。
-- 拓扑区「动态示意」播放 Lottie 导出的 3 秒数据流循环（MRd / MWr 去程、CplD 回程），按默认 Gen4 ×8 配置示意，不代表实时结果。
 - 实时拓扑板采用卡片式节点、边界标签与链路信息卡；占用条、瓶颈高亮、TX/RX 双路、播放与 RTT 叠加保持不变。
 - 金色边框和「瓶颈」小标签标出解析模型的最紧约束 `bounds[0]`（节点或链路），与实测占用分属两套口径。
 - 「端到端延迟构成」把所选 MRd 的首片 RTT 拆成逐跳 `Q / L0 / 串行化 / 切换`，色块宽度为占首片 RTT 的比例，斜纹为等待；点击色块或明细行会高亮对应硬件并刷新节点明细。发起段与接收段列在 RTT 窗口外，用于理解整笔业务流。口径和对账方式见 [Throughput 与 RTT 模型](THROUGHPUT_RTT_MODEL.md#逐跳归因端到端延迟构成)。
@@ -71,8 +70,8 @@ node scripts/perf.mjs simulate --config docs/perf-p2p-duplex.json
 ## 本地验收
 
 - `npm test`：129/129 通过，其中 13 项性能回归，含 25 组路径/配比组合、空载读写手算、末片释放 Tag、Credit 守恒、双端同向争用、截断窗口、RC Bridge 两层预设与逐跳 RTT 对账。
-- `npm run check:site`：69 个文件、2 个入口（`index.html`、`performance.html`），0 警告、0 错误；性能核心由 CLI 与 Node 测试加载。
-- 浏览器：13 场景冒烟 18 条 + 性能页 14 条（Chromium / Firefox / WebKit 三套），其中性能页覆盖 RC Bridge 预设、逐跳延迟构成与拓扑高亮、节点占用条/瓶颈标记、1×–32× 播放倍速、性能解读入口、架构图总览入口、动态示意、手动覆盖与超限拒绝。
+- `npm run check:site`：67 个文件、2 个入口（`index.html`、`performance.html`），0 警告、0 错误；性能核心由 CLI 与 Node 测试加载。
+- 浏览器：13 场景冒烟 18 条 + 性能页 13 条（Chromium / Firefox / WebKit 三套），其中性能页覆盖 RC Bridge 预设、逐跳延迟构成与拓扑高亮、节点占用条/瓶颈标记、1×–32× 播放倍速、性能解读入口、架构图总览入口、手动覆盖与超限拒绝。
 - `matrix --count 256`：20 组全部完成。下表是 Gen4 ×8 示例的整批有效带宽，单位 GB/s；DMA/P2P 为 512 B/操作，CPU BAR 为 4 B/操作。
 
 | 发起路径 | 纯读 | 50:50 | 纯写 |

@@ -32,7 +32,7 @@ import { buildFlitGen6 } from '../js/scenarios/flit_gen6.js';
 import { buildEnumeration } from '../js/scenarios/enumeration.js';
 import { interpretEvent } from '../js/core/event_info.js';
 import { inspectorHtml } from '../js/ui/panels.js';
-import { pmModel, archInfo } from '../js/ui/models.js';
+import { pmModel, archInfo, doeModel, ideModel, tdispModel } from '../js/ui/models.js';
 
 test('TS1 有序集编解码往返一致', () => {
   const pkt = buildOrderedSet('TS1', { gen: 3, width: 8, nFts: 12, laneNumbers: [0, 1, 2, 3, 4, 5, 6, 7] });
@@ -409,6 +409,61 @@ test('PM 典型模型：L / D / P 状态、三层架构与唤醒机制', () => {
   const info = archInfo('pm', 'wake', sim.phy.snapshot(), sim);
   assert.ok(info && info.formula.length > 0, 'PM 架构方块缺少说明');
   assert.equal(archInfo('pm', 'not-exist', sim.phy.snapshot(), sim), null);
+});
+
+test('DOE 典型模型：邮箱寄存器、数据对象与 1 s 时限', () => {
+  const html = doeModel({ link: { gen: 4, width: 8, flitMode: false } });
+  for (const text of ['DOE', 'Write Data Mailbox', 'Read Data Mailbox', 'DOE Go',
+    'Data Object Ready', '1 s', 'Discovery', 'CMA-SPDM', 'IDE_KM',
+    'Vendor ID', 'Length', 'Abort']) {
+    assert.ok(html.includes(text), `DOE 模型缺少 ${text}`);
+  }
+  assert.ok(html.includes('DOE 不产生 TLP'), 'DOE 应说明它不走 TLP 数据通路');
+  assert.ok(html.includes('data-arch="doe-regs"'), 'DOE 寄存器块应可点击');
+  const regs = archInfo('doe', 'doe-regs', {}, null);
+  assert.ok(regs && regs.formula.some((f) => f.includes('+08h')), 'DOE 寄存器浮窗缺少 Control');
+  assert.equal(archInfo('doe', 'not-exist', {}, null), null);
+});
+
+test('IDE 典型模型：AES-GCM、前缀布局、IDE CAP 与 IDE_KM', () => {
+  const html = ideModel({ link: { gen: 4, width: 8, flitMode: false } });
+  for (const text of ['AES-GCM', '96 b', 'IDE Prefix', 'MAC', 'Selective', 'OHC-C',
+    'IDE_KM', 'K_SET_GO', '256 b', 'Secure', 'T 位', 'PCRC',
+    'Fmt = 1001b', 'Type = 0010b', 'PR_Sent_Counter', 'Sub-Stream[3:0]',
+    '0030h', 'IDE Capability Register', 'Link IDE Stream Supported',
+    'Supported Algorithms', 'Default Stream', 'RID Base',
+    'QUERY', 'KEY_PROG', 'KP_ACK', 'K_SET_STOP', 'PortIndex', 'IFV']) {
+    assert.ok(html.includes(text), `IDE 模型缺少 ${text}`);
+  }
+  assert.ok(html.includes('5.9%'), 'IDE 缺少 256 B 载荷的不聚合开销');
+  assert.ok(html.includes('data-arch="ide-prefix"'), 'IDE 前缀应可点击');
+  assert.ok(archInfo('ide', 'ide-keys', {}, null), 'IDE 密钥库缺少说明');
+  const km = archInfo('ide', 'ide-km2', {}, null);
+  assert.ok(km && km.formula.some((f) => f.includes('Object ID')), 'IDE_KM 浮窗缺少数据对象头部');
+  const fm = ideModel({ link: { gen: 6, width: 16, flitMode: true } });
+  assert.ok(fm.includes('OHC-C + Trailer'), 'Flit 模式应改用 OHC-C / Trailer');
+});
+
+test('TDISP 典型模型：Figure 11-2 架构、状态机、能力与报告', () => {
+  const html = tdispModel({ link: { gen: 4, width: 8, flitMode: false } });
+  for (const text of ['TDISP', 'Figure 11-2', 'TEE memory', 'Non-TEE memory', 'TA / IOMMU',
+    'CONFIG_UNLOCKED', 'CONFIG_LOCKED', 'RUN', 'ERROR',
+    'LOCK_INTERFACE_REQUEST', '83h', 'START_INTERFACE_REQUEST', '86h',
+    'STOP_INTERFACE_REQUEST', '87h', 'T 位', 'nonce', 'IDE Stream ID',
+    'TDISP_ERROR', '7Fh', '10h', 'Secured-SPDM',
+    'TEE-IO Supported', 'REQ_MSGS_SUPPORTED', 'LOCK_INTERFACE_FLAGS_SUPPORTED',
+    'DEV_ADDR_WIDTH', 'NO_FW_UPDATE', 'LOCK_MSIX', 'ALL_REQUEST_REDIRECT',
+    'MMIO_RANGE', 'IS_NON_TEE_MEM', 'START_INTERFACE_NONCE', 'INTERFACE_ID']) {
+    assert.ok(html.includes(text), `TDISP 模型缺少 ${text}`);
+  }
+  assert.ok(html.includes('data-arch="tdisp-tvm"'), 'TDISP 架构方块应可点击');
+  assert.ok(html.includes('data-arch="tdisp-data"'), 'TDISP 数据通路应可点击');
+  const lock = archInfo('tdisp', 'tdisp-lock', {}, null);
+  assert.ok(lock && lock.formula.some((f) => f.includes('nonce')), 'LOCK 浮窗缺少 nonce');
+  assert.ok(archInfo('tdisp', 'tdisp-ta', {}, null), 'TA / IOMMU 缺少说明');
+  assert.ok(archInfo('tdisp', 'tdisp-atc', {}, null), 'ATC 缺少说明');
+  const fm = tdispModel({ link: { gen: 6, width: 16, flitMode: true } });
+  assert.ok(fm.includes('OHC-C 的 T 位'), 'Flit 模式应说明 T 位在 OHC-C 中');
 });
 
 test('LTSSM 状态说明覆盖 11 个顶层状态', () => {

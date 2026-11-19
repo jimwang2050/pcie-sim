@@ -137,6 +137,8 @@ button.primary:hover { background: linear-gradient(135deg, #0ea5e9, #3b82f6); }
   border: 1px solid #243653;
   border-radius: 10px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  max-height: min(70vh, 540px);
+  overflow-y: auto;
 }
 .menu-group {
   margin: 4px 8px 2px;

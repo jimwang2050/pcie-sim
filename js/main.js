@@ -33,7 +33,8 @@ import {
 import { eyeSvg, pam4UiSvg } from './ui/eye.js';
 import { GEN_RATE } from './core/packet.js';
 import {
-  eqModel, cdrModel, pllModel, genModel, pmModel, rasModel, orderingModel, archInfo,
+  eqModel, cdrModel, pllModel, genModel, pmModel, rasModel, orderingModel,
+  doeModel, ideModel, tdispModel, archInfo,
   L_STATE_ROWS, D_DEF, P_DEF, PM_LAYERS,
 } from './ui/models.js';
 import { renderCfgLayout, renderCfgFieldDetail } from './ui/cfg_layout.js';
@@ -540,6 +541,15 @@ function modelHtml(kind) {
   if (kind === 'ordering') {
     return orderingModel({ sim });
   }
+  if (kind === 'doe') {
+    return doeModel({ link: sim.link.snapshot() });
+  }
+  if (kind === 'ide') {
+    return ideModel({ link: sim.link.snapshot() });
+  }
+  if (kind === 'tdisp') {
+    return tdispModel({ link: sim.link.snapshot() });
+  }
   return eqModel(s, eqPhasePreview);
 }
 
@@ -739,6 +749,18 @@ function openRasModel() {
 
 function openOrderingModel() {
   openModel('ordering', '典型模型 · PCIe 排序规则（Ordering）');
+}
+
+function openDoeModel() {
+  openModel('doe', '典型模型 · DOE 数据对象交换');
+}
+
+function openIdeModel() {
+  openModel('ide', '典型模型 · IDE 完整性 / 数据加密');
+}
+
+function openTdispModel() {
+  openModel('tdisp', '典型模型 · TDISP TEE 设备接口');
 }
 
 const SCENARIO_MECH = {
@@ -1660,6 +1682,9 @@ modelMenuList.addEventListener('click', (e) => {
     pm: openPmModel,
     ras: openRasModel,
     ordering: openOrderingModel,
+    doe: openDoeModel,
+    ide: openIdeModel,
+    tdisp: openTdispModel,
     eye: openEye,
     bert: openBert,
     compare: openCompare,

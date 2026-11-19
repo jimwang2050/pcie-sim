@@ -89,7 +89,7 @@ node scripts/bench.mjs # 模型吞吐基线（不含渲染）
 - **中列**：分层时序（时序图 / 流程视图 + 层/方向/状态筛选）、事件详情
 - **右列**：配置空间、训练计数器 / Flit 统计、电源管理、中断 / 错误、ATS / PRI、事件日志（可导出 JSON）、说明
 
-「典型模型」弹窗按 **PHY 处理模型 / 链路模式 / 事务与排序 / 电源与系统 / 可靠性与可维护性** 五组，共 10 个模型（EQ、CDR、REF CLK/PLL、眼图与链路预算、BERT、Gen 对照、Flit 对照、Ordering、PM、RAS），详见下文「典型模型」。
+「典型模型」弹窗按 **PHY 处理模型 / 链路模式 / 事务与排序 / 电源与系统 / 可靠性与可维护性 / 安全与可信** 六组，共 13 个模型（EQ、CDR、REF CLK/PLL、眼图与链路预算、BERT、Gen 对照、Flit 对照、Ordering、PM、RAS、DOE、IDE、TDISP），详见下文「典型模型」。
 
 ### 场景
 
@@ -110,7 +110,7 @@ node scripts/bench.mjs # 模型吞吐基线（不含渲染）
 
 ## 典型模型
 
-顶栏「典型模型」菜单按「PHY 处理模型 / 链路模式 / 事务与排序 / 电源与系统 / 可靠性与可维护性」五组，每个模型都按「架构图 → 逐级运算 → 数学公式 → 动态演示 → 过程状态」组织，数值与左侧面板、当前场景共享同一套简化模型。
+顶栏「典型模型」菜单按「PHY 处理模型 / 链路模式 / 事务与排序 / 电源与系统 / 可靠性与可维护性 / 安全与可信」六组，每个模型都按「架构图 → 逐级运算 → 数学公式 → 动态演示 → 过程状态」组织，数值与左侧面板、当前场景共享同一套简化模型。
 
 | 模型 | 讲什么 | 动态 / 交互 |
 | --- | --- | --- |
@@ -124,6 +124,9 @@ node scripts/bench.mjs # 模型吞吐基线（不含渲染）
 | 排序规则（Ordering） | PCIe 6.0 Table 2-42 四类事务的超越矩阵（默认 a / 例外 b）、RO / IDO、同 TxID Completion、死锁避免；Table J-1 九条规则及其系统需求 | 矩阵按行 / 列着色；「生产-消费者」24 秒慢放演示：RC（CPU / RAM dest / RP）↔ EP（EP / Status / Manager / RAM source），P_D 可多块在途，2 次 NP_S 轮询，CPL#1（flag=0）夹在 P_D1 / P_D2 之间且不超越 P_D，最后一次 CPL#2 返回 flag=1 |
 | PM 电源管理 | 三层语义：D（软件写 PMCSR，可见）、L（D + ASPM 推导，通常不可见）、P（PIPE PowerDown 编码）；Table 5-1 的 L 状态 × 平台资源（主电源 / REF CLK / Vaux / 唤醒方式 / 退出延迟）；L0 / L0s / L0p / L1.0–1.2 / L2 / L3 定义与唤醒路径（FTS、CLKREQ#、Beacon、WAKE#） | 按当前场景高亮链路状态；表头与首列固定、长定义自动换行；机制浮窗给出 EP / D / L / 映射的逐项定义 |
 | RAS 可靠性 | 检测（PHY / DL / TL / 链路状态）→ 分级（AER Severity / Mask 的 MUX）→ 上报（ERR_* Message → RC 转主机中断）→ 隔离（DPC / Egress Control 门控）→ 恢复（FLR / Hot Reset / 换卡）；AER / DPC / EDR / FLR / 热插拔的分工与可用性公式 | 硬件示意图区分设备内外，虚线表示软件 / ISR 路径；点分级、隔离、外部处理查看判定依据 |
+| DOE 数据对象交换 | PCIe 6.30：配置空间邮箱（+00h–+14h）、数据对象头部与长度、Discovery / CMA-SPDM / Secured SPDM / IDE_KM 类型；Go / Busy / Ready / Error 与 1 s 时限、Abort、FLR、不能做 P2P | 写邮箱 → Go → 处理 → Ready → 读邮箱 → 回写确认的逐 DW 往返演示；点邮箱、实例、特性查看字段与约束 |
+| IDE 完整性 / 数据加密 | PCIe 6.33 + IDE ECN：Link / Selective / Flow-Through 三种流；NFM IDE Prefix 逐字节 / 逐位布局（Fmt/Type、PR_Sent_Counter、Stream_ID、Sub-Stream、P/M/K/T）；IDE CAP（0030h、Capability / Control / Link 块 ×8 / Selective 块 ×256、算法、聚合、PCRC、Default Stream、RID / Address Association）；IDE_KM 的 QUERY / KEY_PROG / KP_ACK / K_SET_GO / K_SET_STOP 数据对象与 256 b 密钥、64 b IFV、6 把密钥 / 流、10 ms 生效；AES-GCM、96 b MAC、PCRC、聚合与每 TLP 开销 | 前缀位图按 Byte / Bit 着色；明文 → 加密 → 线上 TLP → 对端校验/解密；篡改路径高亮；开销按 256 B 载荷给出不聚合 / 聚合 4 个的对比 |
+| TDISP TEE 设备接口 | 按 Figure 11-2 的 Host/Device 参考架构：VMM / Legacy VM / TVM / TSM / TA / TEE 与非 TEE 内存，PF / TDI ×3 / DSM / ATC / 证书链与信任图例；CONFIG_UNLOCKED → CONFIG_LOCKED → RUN → ERROR 状态机与各状态允许的消息；TEE-IO Supported、TEE-Limited Stream、TDISP_CAPABILITIES 与 LOCK FLAGS；LOCK 失败条件、START nonce、STOP 清理、DEVICE_INTERFACE_REPORT 分段与 MMIO 属性、T 位 TLP 规则 | 状态图标注每个状态可收的请求码；TSM ↔ DSM 的 VERSION → CAPABILITIES → LOCK → REPORT → START → STOP 顺序动画；点 Host/Device 元素、TA、ATC、证书、数据通路查看细节 |
 
 「配置空间」面板的 **Header Layout** 另提供 Type 0（端点）与 Type 1（桥 / 根端口）两种 32-bit word 逐行布局：点击字段查看位域、DWC 寄存器名、访问属性与复位值，BAR / Expansion ROM BAR 还给出大小探测与位域表。
 
@@ -206,7 +209,7 @@ pcie-sim/
 - **时间压缩 1:100**：Detect 的 12 ms 规范计时在图上显示为 120 µs；播放速度可再放慢或加快
 - 事件驱动而非周期级：关注“发生了什么、谁先谁后”，不模拟门级延迟、PLL 抖动波形与均衡器自适应算法细节
 - PHY 采用简化传递函数与 COM 近似，不含真实 S 参数 / IBIS-AMI 模型
-- 未建模：SR-IOV 细节、DOE、CXL 的 RAS 能力、完整热插拔电气时序、各厂商私有扩展
+- 未建模：SR-IOV 细节、DOE / IDE / TDISP 的寄存器与事件级仿真（这三者仅在「典型模型」中做协议级讲解）、CXL 的 RAS 能力、完整热插拔电气时序、各厂商私有扩展
 - P 状态按 PIPE PowerDown 语义（P0/P1/P2 编码），不表示 PCI-PM 性能档
 - 时间轴、寄存器与计数均为教学用途的简化值，不能作为芯片实现或合规测试依据
 
@@ -216,7 +219,7 @@ pcie-sim/
 npm test
 ```
 
-覆盖有序集编解码与传输时间、链路训练与变速、Gen6 Flit 布局 / 显式故障结果 / 重传示意、TLP 与配置空间 / BAR 枚举、VC0 信用原子准入与阻塞重发、Requester+Tag 事务匹配、内存读写、MSI / MSI-X（含 Pending 补发）、AER（Mask / Severity）、DPC + RP PIO（Posted 丢弃）、ATS + PRI、PM 状态机与 PMCSR、PHY 与均衡、Loopback / BERT 统计判定、单步回退、事件确定性，以及 PM 典型模型渲染片段的存在性断言。
+覆盖有序集编解码与传输时间、链路训练与变速、Gen6 Flit 布局 / 显式故障结果 / 重传示意、TLP 与配置空间 / BAR 枚举、VC0 信用原子准入与阻塞重发、Requester+Tag 事务匹配、内存读写、MSI / MSI-X（含 Pending 补发）、AER（Mask / Severity）、DPC + RP PIO（Posted 丢弃）、ATS + PRI、PM 状态机与 PMCSR、PHY 与均衡、Loopback / BERT 统计判定、单步回退、事件确定性，以及 PM / DOE / IDE / TDISP 典型模型渲染片段的存在性断言。
 
 另含 M3 回归：URL 状态解析与回写、13 场景导引完整性、事件筛选、版本化 JSON 导出（BigInt 无损）、事件 schema 字段。浏览器冒烟覆盖 13 场景 + 配置收敛 + 导引 + 事件筛选 + URL 恢复。
 

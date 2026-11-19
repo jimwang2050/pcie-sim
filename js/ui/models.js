@@ -1468,7 +1468,7 @@ export function rasModel(ctx) {
     ['Transaction', 'ECRC、Malformed TLP、Poisoned TLP、Completion Timeout、UR/CA', '数据完整性错误通常 Non-Fatal'],
     ['链路状态', 'Surprise Down、Receiver Overflow、Training Error', 'Fatal，需要复位或换卡'],
   ])}
-    <p class="hint">模型只覆盖 PCIe 基础 RAS（AER / DPC / 热插拔 / 复位）；CXL 的 RAS 能力与 DOE、RAS Capability 寄存器不在本模型范围内。</p>
+    <p class="hint">模型只覆盖 PCIe 基础 RAS（AER / DPC / 热插拔 / 复位）；CXL 的 RAS 能力与 RAS Capability 寄存器不在本模型范围内。DOE、IDE 等安全相关机制见「安全与可信」分组。</p>
 
     ${sect('数学公式', '错误率、可用性与恢复时间的简化表达')}
     ${formula([
@@ -1806,6 +1806,847 @@ export function orderingModel(ctx = {}) {
       「设备枚举」场景包含 CfgRd（Read Request）与 CfgWr（NP with Data）。
       模型只解释排序规则与属性，不建模 VC 仲裁、Switch 内部队列深度与 Completion 合并；
       RO / IDO / PASID 的厂商实现差异不在展开范围内。</p>`;
+}
+
+/* ---------- DOE：数据对象交换（PCIe 6.2 §6.30） ---------- */
+
+const DOE_REGS = [
+  ['+00h', 'Capability Header'],
+  ['+04h', 'Capabilities'],
+  ['+08h', 'Control'],
+  ['+0Ch', 'Status'],
+  ['+10h', 'Write Data Mailbox'],
+  ['+14h', 'Read Data Mailbox'],
+];
+
+const DOE_OBJECTS = [
+  ['0001h / 00h', 'DOE Discovery', '必须实现；Index 00h 返回自身', '软件枚举本实例支持的类型'],
+  ['0001h / 01h', 'CMA-SPDM', '承载 SPDM 消息', '设备身份认证与度量'],
+  ['0001h / 02h', 'Secured CMA-SPDM', '承载 SPDM 安全会话', 'IDE_KM 等密钥管理的传输层'],
+  ['0001h / 03h', 'CMA/SPDM + Connection ID', '多软件实体共享一个 DOE 实例', '第 4 DW 给出最大 Connection ID'],
+  ['0001h / 04h', 'Secured CMA/SPDM + Connection ID', '安全会话 + Connection ID', '需同时支持 01h / 03h'],
+  ['0001h / 05h', 'Async Message', '设备异步发起的数据对象', '第 4 DW 必选'],
+];
+
+const DOE_RULES = [
+  ['完成时限', 'Go=1 后 1 s 内 Ready=1；否则 Error=1', '超时视为失败，软件可写 Abort 收尾'],
+  ['中止', 'Control.Abort=1 → 清 Ready / Error（≤1 s）', 'Abort 是软件唯一的清错手段'],
+  ['传输互斥', '一个数据对象传完前不得开始下一个', '多个 feature 需软件串行化'],
+  ['FLR', 'FLR 中止进行中的传输；期间写邮箱丢弃、读邮箱 UR 或全 0', '复位后允许置 Error'],
+  ['访问粒度', '邮箱读写必须全字节使能，每次 1 DW', '非全字节使能行为未定义'],
+  ['P2P', 'DOE 依赖配置请求，不能直接用于 Function 间对等操作', '需要系统软件中继'],
+  ['中断', '可选 MSI / MSI-X，不支持 INTx', 'Ready / Error 由 0 变 1 时触发'],
+];
+
+function doeChip(x, y, w, h, title, sub) {
+  return `<g class="arch-link" data-arch="doe-feature" role="button" tabindex="0" aria-label="${title}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="#0c1729" stroke="#3a5578"/>
+    <text class="blk-title" x="${x + w / 2}" y="${y + 17}" text-anchor="middle">${title}</text>
+    <text class="blk-expr" x="${x + w / 2}" y="${y + 32}" text-anchor="middle">${sub}</text>
+  </g>`;
+}
+
+function doeArch() {
+  const regY = 44;
+  const regH = 168;
+  const rows = DOE_REGS.map(([off, name], i) => {
+    const yy = regY + 46 + i * 20;
+    return `<line x1="198" y1="${yy - 13}" x2="360" y2="${yy - 13}" stroke="#22314c"/>
+      <text class="blk-expr" x="200" y="${yy}" style="fill:#7b93b1">${off}</text>
+      <text class="blk-title" x="238" y="${yy}" style="font-size:8px">${name}</text>`;
+  }).join('');
+  return `<svg class="model-svg" viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg">
+    <rect x="170" y="26" width="536" height="224" rx="14" fill="rgba(30,58,95,0.12)"
+      stroke="#2b4162" stroke-dasharray="7 5"/>
+    <text class="arch-note" x="180" y="42">设备 / Function（DOE 位于配置空间）</text>
+
+    ${archBlock(12, 86, 144, 84, '系统固件 / 软件', 'CfgRd / CfgWr', '每次 1 DW', '', 'doe-sw')}
+    ${archArrow(156, 186, 128, '', 'doe-cfg')}
+
+    <g class="arch-link" data-arch="doe-regs" role="button" tabindex="0" aria-label="DOE 扩展能力寄存器">
+      <rect x="190" y="${regY}" width="180" height="${regH}" rx="9" fill="#0c1729" stroke="#3a5578"/>
+      <text class="blk-title" x="280" y="${regY + 20}" text-anchor="middle">DOE 扩展能力</text>
+      <text class="blk-expr" x="280" y="${regY + 34}" text-anchor="middle">6 个 32-bit 寄存器</text>
+      ${rows}
+    </g>
+    <text class="arch-label" x="196" y="${regY + regH + 16}" style="fill:#7b93b1">Go / Abort 在 +08h，Busy / Ready / Error 在 +0Ch</text>
+
+    ${archArrow(370, 402, 128, 'DO', 'doe-object')}
+
+    ${archBlock(404, 56, 168, 78, 'DOE 实例', '按 Vendor ID + Type 分发', '2 DW … 2^18 DW', 'hot', 'doe-engine')}
+    ${doeChip(404, 146, 80, 44, 'Discovery', '00h · 必选')}
+    ${doeChip(492, 146, 80, 44, 'CMA-SPDM', '01h / 02h')}
+    ${doeChip(404, 194, 80, 44, 'Secured', '会话 / 密钥')}
+    ${doeChip(492, 194, 80, 44, 'IDE_KM', '经安全会话')}
+
+    ${archArrow(574, 618, 128, '', 'doe-io')}
+    ${archBlock(620, 86, 84, 84, 'Function', '度量 / 密钥', '特性实现', '', 'doe-consumer')}
+
+    <text class="arch-note" x="12" y="266">DOE 不产生 TLP：数据对象通过配置读写搬运，因此带宽低、逐 DW 往返，也不能直接做 Function 间 P2P。</text>
+    <text class="arch-note" x="12" y="284">Discovery 负责枚举；CMA-SPDM / IDE_KM 负责认证与密钥；Async Message 允许设备主动上报。</text>
+  </svg>`;
+}
+
+function doeFlowSvg() {
+  const SW = 120;
+  const DEV = 500;
+  const msg = (y, t0, toDev, color, label) => {
+    const a = t0.toFixed(3);
+    const b = (t0 + 0.015).toFixed(3);
+    const c = (t0 + 0.10).toFixed(3);
+    const d = (t0 + 0.115).toFixed(3);
+    const path = toDev ? `M${SW},${y} L${DEV},${y}` : `M${DEV},${y} L${SW},${y}`;
+    return `${label ? `<text class="arch-label" x="${(SW + DEV) / 2}" y="${y - 7}" text-anchor="middle">${label}</text>` : ''}
+      <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0"
+        keyTimes="0;${a};${b};${c};${d};1" dur="10s" repeatCount="indefinite"/>
+      <circle r="3" fill="${color}"><animateMotion dur="10s" repeatCount="indefinite" calcMode="linear"
+        keyTimes="0;${a};${c};1" keyPoints="0;0;1;1" path="${path}"/></circle>
+    </g>`;
+  };
+  const arrow = (y, color, toDev = true) => {
+    const tip = toDev ? DEV : SW;
+    const dir = toDev ? 1 : -1;
+    return `<line x1="${SW}" y1="${y}" x2="${DEV}" y2="${y}" stroke="${color}" stroke-width="1.3"/>
+      <polygon points="${tip},${y} ${tip - 7 * dir},${y - 3.5} ${tip - 7 * dir},${y + 3.5}" fill="${color}"/>`;
+  };
+  return `<svg class="model-svg" viewBox="0 0 720 270" xmlns="http://www.w3.org/2000/svg">
+    <line x1="${SW}" y1="46" x2="${SW}" y2="226" stroke="#22314c" stroke-dasharray="4 4"/>
+    <line x1="${DEV}" y1="46" x2="${DEV}" y2="226" stroke="#22314c" stroke-dasharray="4 4"/>
+    <rect x="${SW - 72}" y="24" width="144" height="22" rx="6" fill="#0c1729" stroke="#3a5578"/>
+    <text class="blk-title" x="${SW}" y="39" text-anchor="middle">系统固件 / 软件</text>
+    <rect x="${DEV - 40}" y="24" width="80" height="22" rx="6" fill="#0c1729" stroke="#3a5578"/>
+    <text class="blk-title" x="${DEV}" y="39" text-anchor="middle">DOE 实例</text>
+    <text class="arch-label" x="20" y="140" style="fill:#7b93b1">时间 ↓</text>
+
+    ${arrow(64, '#38bdf8')}${msg(64, 0.02, true, '#38bdf8', '① CfgWr DW0…DWn → Write Data Mailbox')}
+    ${arrow(94, '#38bdf8')}${msg(94, 0.13, true, '#38bdf8', '② CfgWr Control.Go = 1')}
+    <rect x="430" y="108" width="140" height="24" rx="6" fill="rgba(251,191,36,0.08)" stroke="#fbbf24"/>
+    <text class="arch-label" x="500" y="124" text-anchor="middle" style="fill:#fbbf24">③ Busy=1 · 解析 / 执行特性</text>
+    ${arrow(154, '#34d399', false)}${msg(154, 0.34, false, '#34d399', '④ Status.Ready=1（≤1 s，否则 Error=1）')}
+    ${arrow(184, '#38bdf8')}${msg(184, 0.50, true, '#38bdf8', '⑤ CfgRd Read Data Mailbox ×N')}
+    ${arrow(214, '#38bdf8')}${msg(214, 0.72, true, '#38bdf8', '⑥ 回写 Read Mailbox 确认 → 清 Ready')}
+
+    <text class="arch-note" x="12" y="246">可选：Ready / Error 由 0 变 1 触发 MSI/MSI-X；任意时刻写 Abort=1 可在 1 s 内中止并清 Ready / Error。</text>
+    <text class="arch-note" x="12" y="264">Discovery 是唯一必选特性：软件按 Index 递增查询，直到 Next Index = 00h 为止。</text>
+  </svg>`;
+}
+
+/** DOE 数据对象交换模型：配置空间邮箱 + 请求/响应数据对象。 */
+export function doeModel(ctx = {}) {
+  const link = ctx.link || {};
+  const gen = link.gen ?? 4;
+  const width = link.width ?? 8;
+  return `<div class="model-head">
+      <span class="model-badge">DOE · 数据对象交换</span>
+      Gen${gen} ×${width} · 走配置请求 · 每个数据对象 2 DW 起
+    </div>
+
+    ${sect('架构', '软件通过配置读写访问邮箱；DOE 实例按 Vendor ID + Type 把数据对象交给对应特性 · 点击方块查看细节')}
+    ${doeArch()}
+
+    ${sect('邮箱寄存器', 'DOE 扩展能力固定 24 B，数据靠两个邮箱逐 DW 搬运')}
+    ${stateTable(['偏移', '寄存器', '作用'], [
+    ['+00h', 'Capability Header', '扩展能力 ID、版本、Next Capability'],
+    ['+04h', 'Capabilities', 'Capability Version、Interrupt Support、中断向量号'],
+    ['+08h', 'Control', 'DOE Go（启动）、Abort（中止）、Interrupt Enable、Attention'],
+    ['+0Ch', 'Status', 'DOE Busy、Data Object Ready、DOE Error、Interrupt Status'],
+    ['+10h', 'Write Data Mailbox', '每写 1 DW 拼入一个数据对象；读完即清'],
+    ['+14h', 'Read Data Mailbox', '每读 1 DW；读完最后 1 DW 后回写一次作为确认'],
+  ])}
+    <p class="hint">邮箱只支持 32-bit 全字节使能访问；一次数据对象传输就是 N 次配置写 + N 次配置读，天然是低带宽、高往返开销的路径。</p>
+
+    ${sect('数据对象格式', 'DW0 说明「谁定义的、什么类型」，DW1 给出长度与 Connection ID')}
+    ${stateTable(['字段', '位置', '含义'], [
+    ['Vendor ID', 'DW0 [15:0]', '定义该数据对象类型的厂商；PCI-SIG 为 0001h'],
+    ['Data Object Type', 'DW0 [23:16]', '类型编号，由 Vendor ID 对应的厂商定义'],
+    ['Length', 'DW1 [17:0]', '以 DW 计，含头部 2 DW；0002h = 2 DW，0000h = 2^18 DW，0001h 非法'],
+    ['Connection ID', 'DW1 [29:18]', '仅使用 Connection ID 的类型有效，其余保留'],
+  ])}
+
+    ${sect('PCI-SIG 数据对象类型', 'Vendor ID = 0001h')}
+    ${stateTable(['ID', '名称', '说明', '典型用途'], DOE_OBJECTS)}
+    <p class="hint">长度不匹配、长度过短或类型不支持时，整个数据对象被静默丢弃；长度偏长则只处理期望部分。Discovery 必须在索引 00h 出现，索引无效时返回 Vendor ID = FFFFh。</p>
+
+    ${sect('动态演示', '一次请求 / 响应：写邮箱 → Go → Ready → 读邮箱 → 回写确认')}
+    ${demo(doeFlowSvg(), '往返全部走配置请求，每一步都对应一次 Non-Posted 配置访问；设备侧处理超过 1 s 会置 Error 而不是 Ready。', [
+    '<i class="sw blue"></i>写：软件逐 DW 填 Write Data Mailbox，最后一次写 Control.Go=1。',
+    '<i class="sw amber"></i>处理：Busy=1，DOE 实例解析头部并交给特性实现；期间软件不应再写邮箱。',
+    '<i class="sw green"></i>读：Ready=1 后逐 DW 读 Read Data Mailbox，读完回写一次让实例清 Ready。',
+    '超时或错误：Error=1，必须由软件写 Abort=1 清除；FLR 也会中止进行中的传输。',
+  ])}
+
+    ${sect('协议约束', '时限、互斥、复位与拓扑限制')}
+    ${stateTable(['约束', '规则', '后果'], DOE_RULES)}
+
+    ${sect('数学公式', '把邮箱访问看成逐 DW 的往返，而不是突发传输')}
+    ${formula([
+    't_DO ≈ N_DW × t_CfgWr + t_proc + N_DW × t_CfgRd',
+    't_CfgWr ≈ t_TLP + t_Completion（Non-Posted，逐 DW 串行）',
+    '完成条件：t_proc ≤ 1 s，否则 Status.Error = 1',
+    '有效吞吐 ≈ 4 B / (t_CfgWr + t_CfgRd) ≪ 链路带宽',
+  ], `当前链路 Gen${gen} ×${width}：数据对象大小由 Length 决定，2 DW 到 2^18 DW。
+     DOE 的价值在「可达性与标准化」，不在吞吐；大对象应交给普通内存 TLP。`)}
+
+    ${sect('与场景的对应')}
+    <p class="model-assume">DOE 复用「设备枚举」场景里的配置请求通路，是枚举完成后由固件 / 驱动发起的带内管理通道。
+      本模拟器目前没有实现 DOE 邮箱寄存器与 SPDM 会话，也没有重放 DOE 事件；模型只做协议级讲解，
+      不表示数据对象会出现在时间轴或事件日志里。DOE 也不能替代 TLP 数据通路。</p>`;
+}
+
+/* ---------- IDE：完整性与数据加密（PCIe 6.2 §6.33，TDISP 第 11 章） ---------- */
+
+const IDE_FIELDS = [
+  ['Byte 0 [7:4]', 'Fmt = 1001b', '端到端 TLP Prefix'],
+  ['Byte 0 [3:0]', 'Type = 0010b', '标识 IDE Prefix'],
+  ['Byte 1 [7:0]', 'PR_Sent_Counter', '非 UIO Non-Posted 请求 / 完成的重放计数；Posted 保留'],
+  ['Byte 2 [7:0]', 'Stream_ID', 'IDE 流标识'],
+  ['Byte 3 [7:4]', 'Sub-Stream[3:0]', '0000 Posted / 0001 Non-Posted / 0010 Completion / 0111 非 IDE 的 OHC-C'],
+  ['Byte 3 [3]', 'P', '含 PCRC；仅当 M=1 才可置位'],
+  ['Byte 3 [2]', 'M', '含 MAC；不聚合时必须为 1'],
+  ['Byte 3 [1]', 'K', '密钥集：K0 / K1'],
+  ['Byte 3 [0]', 'T', 'TLP 源自 TEE / TVM（TDISP 使用）'],
+];
+
+const IDE_CAP_STRUCT = [
+  ['+00h', 'Extended Capability Header', 'Capability ID = 0030h，Capability Version = 1h'],
+  ['+04h', 'IDE Capability Register', 'Link / Selective / Flow-Through 能力、算法、TC 数与流数'],
+  ['+08h', 'IDE Control Register', 'bit2 = Flow-Through IDE Stream Enabled'],
+  ['Link 块 ×0–8', 'Link IDE Stream Control + Status', '每个 TC 一个块（最多 8 个）'],
+  ['Selective 块 ×0–255', 'Capability + Control + Status + RID / Address Association', '每个流一个块，最多 256 个'],
+  ['RID 关联', 'Association Register 1 / 2', 'RID Limit / RID Base，Register 2 的 bit0 为 V'],
+  ['地址关联', 'Association Register 1–3', 'Memory Base / Limit，Register 1 的 bit0 为 V'],
+];
+
+const IDE_CAP_BITS = [
+  ['0', 'Link IDE Stream Supported', '存在 Link IDE 块'],
+  ['1', 'Selective IDE Streams Supported', '存在 Selective IDE 块'],
+  ['2', 'Flow-Through IDE Stream Supported', 'Switch / Root Port 可透传 Selective 流'],
+  ['4', 'Aggregation Supported', '支持 TLP 聚合'],
+  ['5', 'PCRC Supported', '支持明文 CRC'],
+  ['6', 'IDE_KM Protocol Supported', '支持 IDE_KM 响应者角色'],
+  ['7', 'Selective IDE for CfgReq Supported', '配置请求也可关联 Selective 流'],
+  ['12:8', 'Supported Algorithms', '00000b = AES-GCM 256 密钥 / 96 b MAC'],
+  ['15:13', 'Number of TCs Supported for Link IDE', '000b = 1 个 TC … 111b = 8 个 TC'],
+  ['23:16', 'Number of Selective IDE Streams Supported', '0 = 1 条流 … 255 = 256 条流'],
+];
+
+const IDE_STREAM_CTRL = [
+  ['0', 'Stream Enable', '置 1 后由 IDE_KM 触发；清 0 立即回 Insecure'],
+  ['3:2 / 5:4 / 7:6', 'Tx Aggregation Mode NPR / PR / CPL', '00 不聚合 … 11 最多 8 个'],
+  ['8', 'PCRC Enable', '含载荷的发送 TLP 必须带 PCRC'],
+  ['9', 'Selective IDE for CfgReq Enable', '仅 Root Port 有效'],
+  ['18:14', 'Selected Algorithm', '00000b = AES-GCM 256 / 96 b'],
+  ['21:19', 'TC', '该流关联的 Traffic Class'],
+  ['22', 'Default Stream', '仅 EP Upstream Port；同一 TC 只能一个'],
+  ['23', 'TEE-Limited Stream', 'TDISP 增补：该流只允许 T=1 的 TLP'],
+  ['31:24', 'Stream ID', '两个 Partner 端口必须一致'],
+  ['Status 3:0', 'Stream State', '0000 = Insecure，0010 = Secure'],
+  ['Status 31', 'Received Integrity Check Fail Message', 'RW1C；收到完整性检查失败消息'],
+];
+
+const IDE_KM_OBJS = [
+  ['00h', 'QUERY', 'Req → Resp', '查询 PortIndex 对应端口的能力与配置'],
+  ['01h', 'QUERY_RESP', 'Resp → Req', 'PortIndex / MaxPortIndex / Bus / Segment / DevFn + IDE 能力结构'],
+  ['02h', 'KEY_PROG', 'Req → Resp', 'PortIndex + Stream ID + 子流 + RxTxB + Key Set + 256 b Key + 64 b IFV'],
+  ['03h', 'KP_ACK', 'Resp → Req', 'Status：00 成功 / 01 长度错 / 02 PortIndex 不支持 / 03 字段不支持 / 04 失败'],
+  ['04h', 'K_SET_GO', 'Req → Resp', '启用指定 Key Set；接收端必须先于发送端'],
+  ['05h', 'K_SET_STOP', 'Req → Resp', '停用并销毁指定 Key Set'],
+  ['06h', 'K_GOSTOP_ACK', 'Resp → Req', '确认可以接收下一条 IDE_KM 请求'],
+];
+
+const IDE_KM_RULES = [
+  ['传输', '必须放在 Secured-SPDM 会话内；未安全传输的数据对象丢弃且不得响应'],
+  ['Object ID', 'DW0 bits[7:0] = Protocol ID 00h（IDE）；bits[15:8] = Object ID 00h–06h'],
+  ['PortIndex', '00h = 本端口；01h–FFh = 该端口代表的其它端口'],
+  ['密钥', '256 b；每个 Sub-Stream × 方向独立；一条流共 6 把'],
+  ['Key Set', 'K0 / K1 两套；初始建议 K=0；切换后旧 bank 失效直到重新编程'],
+  ['时限', 'KP_ACK ≤1 s；K_SET_GO 后 10 ms 内开始用新键 / 可收新键；K_SET_STOP 10 ms 内销毁'],
+  ['会话绑定', '同一条流的密钥必须由同一个 SPDM 会话编程；换会话须先销毁旧密钥并转 Insecure'],
+  ['顺序', '先给两个 Partner 端口的接收端发 K_SET_GO，再给发送端发 K_SET_GO'],
+  ['DOE 触发', '触发 IDE 的配置写先用非 IDE Completion 返回，再启动 IDE'],
+];
+
+const IDE_STREAMS = [
+  ['Link IDE', '一条链路上某个 TC 的全部 TLP（Selective 关联的除外）', '无 Switch，或逐跳全部启用', '直连 RC ↔ EP'],
+  ['Selective IDE', '按 Stream_ID / 地址等规则选定的 TLP', '可跨 Switch 逐跳建立，也可 EP ↔ EP', 'TDISP / P2P / 多租户'],
+  ['Flow-Through Selective', 'Switch 只转发、不改写选定流', '跨 Switch 端到端', '把中间 Switch 排除出 TCB'],
+];
+
+const IDE_STATES = [
+  ['Insecure', '流未建立，或检测到危及安全的条件', '端口必须阻止「本应加密」的 TLP 发出'],
+  ['Ready', '配置完成、密钥已就绪（软件可见的概念子状态）', '硬件不跟踪，由系统软件判定'],
+  ['Secure', 'Enable=1 且密钥、校验均正常', '正常收发 IDE TLP'],
+  ['TEE Not Locked', '任一必需 IDE 流不在 Secure', 'TDISP 禁止 TDI 进入 RUN'],
+  ['TEE Locked', '所有必需 IDE 流均为 Secure', '允许 TEE 访问设备接口'],
+];
+
+const IDE_ERRORS = [
+  ['IDE Check Failed', 'MAC 校验失败、K 位 / 子流 / 序列等规则违例', '丢弃 TLP 并报错（AER 可选状态位）'],
+  ['PCRC Check Failed', '解密后明文 CRC 不符，说明加解密逻辑出错', 'Non-Fatal；数据不应继续使用'],
+  ['Misrouted IDE TLP', '流未使能、两端 Flit / Non-Flit 不一致或路由错误', '不转发、不产生 Completion'],
+];
+
+function ideDashed(x1, y1, x2, y2, color = '#a78bfa') {
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}"
+    stroke-width="1.3" stroke-dasharray="4 4"/>`;
+}
+
+function ideArch(link) {
+  const gen = link.gen ?? 4;
+  const width = link.width ?? 8;
+  const flit = link.flitMode ? 'FM · OHC-C + Trailer' : 'NFM · IDE Prefix';
+  return `<svg class="model-svg" viewBox="0 0 720 310" xmlns="http://www.w3.org/2000/svg">
+    <!-- 数据平面 -->
+    ${archBlock(12, 42, 100, 84, 'TL 明文 TLP', 'Header + Data', 'A / P', '', 'ide-plain')}
+    ${archArrow(112, 140, 84, '', 'ide-in')}
+    ${archBlock(142, 42, 110, 84, 'IDE TX 引擎', 'AES-GCM', '加密 + 认证', 'hot', 'ide-gcm')}
+    ${archArrow(252, 280, 84, '', 'ide-enc')}
+    ${archBlock(282, 42, 118, 84, '线上 IDE TLP', flit, '4 B + 12 B', '', 'ide-wire')}
+    ${archArrow(400, 436, 84, '', 'ide-link')}
+    ${archBlock(438, 42, 96, 84, '物理链路', 'Retimer / Switch', '攻击面', '', 'ide-link2')}
+    ${archArrow(534, 566, 84, '', 'ide-rx')}
+    ${archBlock(568, 42, 140, 84, 'IDE RX 引擎', '校验 MAC → 解密', '失败即丢弃', '', 'ide-rx')}
+    <text class="arch-note" x="12" y="140">数据平面：明文 TLP → AES-GCM 加密 → 线上（前缀 + 密文 + MAC）→ 对端校验并解密</text>
+
+    <!-- 控制平面 -->
+    <rect x="6" y="160" width="708" height="100" rx="12" fill="rgba(167,139,250,0.05)"
+      stroke="#3b3358" stroke-dasharray="6 4"/>
+    <text class="arch-note" x="16" y="176">控制平面：配置 IDE Cap / Stream Control → 认证 → 安全会话 → 密钥管理 → 启用流（虚线 = 配置 / 密钥，不是数据）</text>
+    ${archBlock(12, 184, 132, 66, '系统固件 / 软件', '配置 IDE Cap / 流', '中央权威', '', 'ide-ctrl')}
+    ${archArrow(144, 176, 217, '', 'ide-spdm')}
+    ${archBlock(178, 184, 148, 66, 'DOE + CMA-SPDM', '认证 / 安全会话', '01h / 02h', '', 'ide-spdm2')}
+    ${archArrow(326, 358, 217, '', 'ide-km')}
+    ${archBlock(360, 184, 150, 66, 'IDE_KM', 'KEY_PROG / K_SET_GO', 'K_SET_STOP / ACK', 'hot', 'ide-km2')}
+    ${archArrow(510, 542, 217, '', 'ide-keys')}
+    ${archBlock(544, 184, 164, 66, '密钥库', '256 b × 3 子流 × Rx/Tx', 'K 位选择 bank', '', 'ide-keys2')}
+
+    ${ideDashed(626, 184, 640, 140, '#a78bfa')}
+    ${ideDashed(600, 184, 600, 140, '#a78bfa')}
+    <text class="arch-label" x="652" y="152" text-anchor="end" style="fill:#c4b5fd">编程密钥 / 启停流</text>
+
+    <text class="arch-note" x="10" y="278">当前配置：Gen${gen} ×${width} · ${flit}</text>
+    <text class="arch-note" x="10" y="296">IDE 只保护两个 IDE 端点之间的链路；端口以内（片上）的隔离由 TEE / TDISP 负责，不在 IDE 范围内。</text>
+  </svg>`;
+}
+
+function ideTlpSvg() {
+  const box = (x, y, w, h, title, sub, color, key = '') => `<g class="arch-link"${key ? ` data-arch="${key}" role="button" tabindex="0"` : ''}>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="#0c1729" stroke="${color}"/>
+    <text class="blk-title" x="${x + w / 2}" y="${y + 17}" text-anchor="middle">${title}</text>
+    <text class="blk-expr" x="${x + w / 2}" y="${y + 31}" text-anchor="middle" style="fill:${color}">${sub}</text>
+  </g>`;
+  return `<svg class="model-svg" viewBox="0 0 720 270" xmlns="http://www.w3.org/2000/svg">
+    <text class="arch-label" x="20" y="26" style="fill:#7b93b1">线上 IDE TLP（Non-Flit Mode）</text>
+    ${box(20, 38, 92, 44, 'IDE Prefix', '4 B', '#38bdf8', 'ide-prefix')}
+    ${box(116, 38, 148, 44, 'Header（A）', '认证不加密', '#a78bfa', 'ide-header')}
+    ${box(268, 38, 210, 44, 'Data Payload → C', 'AES-GCM 加密', '#fbbf24', 'ide-payload')}
+    ${box(482, 38, 62, 44, 'PCRC', '可选 4 B', '#94a3b8')}
+    ${box(548, 38, 100, 44, 'MAC', '96 b = 12 B', '#34d399', 'ide-mac')}
+
+    <line x1="20" y1="94" x2="264" y2="94" stroke="#a78bfa" stroke-width="1.2"/>
+    <text class="arch-label" x="20" y="108" style="fill:#c4b5fd">A = Prefix ‖ Header（参与认证，不加密）</text>
+    <line x1="268" y1="94" x2="478" y2="94" stroke="#fbbf24" stroke-width="1.2"/>
+    <text class="arch-label" x="268" y="108" style="fill:#fbbf24">P → C（加密）；MAC 覆盖 A 与 C</text>
+
+    <rect x="96" y="136" width="250" height="64" rx="9" fill="#0c1729" stroke="#3a5578"/>
+    <text class="blk-title" x="221" y="156" text-anchor="middle">AES-GCM(K, IV)</text>
+    <text class="blk-expr" x="221" y="172" text-anchor="middle">A → GHASH；P → CTR 加密</text>
+    <text class="blk-val" x="221" y="188" text-anchor="middle">输出 C + 96 b MAC</text>
+    <line x1="221" y1="112" x2="221" y2="132" stroke="#7dd3fc" stroke-width="1.3"/>
+    <polygon points="221,136 217,128 225,128" fill="#7dd3fc"/>
+    <text class="arch-label" x="230" y="126" style="fill:#7dd3fc">A + P</text>
+    ${archArrow(346, 392, 168, 'C + MAC', 'ide-out')}
+
+    <rect x="398" y="136" width="136" height="64" rx="9" fill="#0c1729" stroke="#34d399"/>
+    <text class="blk-title" x="466" y="156" text-anchor="middle">对端校验</text>
+    <text class="blk-expr" x="466" y="172" text-anchor="middle" style="fill:#34d399">MAC 一致 → 解密交付</text>
+    <text class="blk-expr" x="466" y="188" text-anchor="middle" style="fill:#f87171">MAC 不符 → 丢弃 + 报错</text>
+
+    <g opacity="0.4">
+      <animate attributeName="opacity" values="0.25;0.25;1;1;0.25" keyTimes="0;0.35;0.42;0.72;0.8"
+        dur="9s" repeatCount="indefinite"/>
+      <text class="arch-label" x="556" y="122" style="fill:#f87171">攻击：改 1 bit / 删 TLP / 重排</text>
+      <line x1="556" y1="128" x2="532" y2="140" stroke="#f87171" stroke-width="1.6" stroke-dasharray="4 3"/>
+      <polygon points="530,141 538,134 540,142" fill="#f87171"/>
+    </g>
+
+    <text class="arch-note" x="20" y="228">每个 TLP 固定开销 = 4 B 前缀（FM 为 OHC-C）+ 12 B MAC；PCRC 另加 4 B。MAC 计入 Header Credit，不占 Data Credit。</text>
+    <text class="arch-note" x="20" y="246">聚合 n 个 TLP 时 MAC 只算一次：开销 ≈ 4 + 12/n 字节/TLP，规范建议约 4 个一组。</text>
+    <text class="arch-note" x="20" y="264">部分包头加密可把地址与字节使能移入 P，降低侧信道暴露，但路由所需字段仍保持明文。</text>
+  </svg>`;
+}
+
+/** IDE Prefix（NFM）逐字节 / 逐位布局：1 DW = 4 B。 */
+function idePrefixSvg() {
+  const BX = [56, 206, 356, 506];
+  const CW = 17;
+  const cell = (x, y, color) => `<rect x="${x}" y="${y}" width="${CW - 1}" height="28" rx="2"
+    fill="#0c1729" stroke="${color}"/>`;
+  const bits = (x, y, n) => Array.from({ length: n }, (_, i) => `<text class="blk-val"
+    x="${x + i * CW + (CW - 1) / 2}" y="${y - 5}" text-anchor="middle">${7 - i}</text>`).join('');
+  const hex = (x, values) => values.map((v, i) => `<text class="blk-title"
+    x="${x + i * CW + (CW - 1) / 2}" y="65" text-anchor="middle" style="font-size:8px">${v}</text>`).join('');
+
+  const byte0 = `${cell(BX[0], 46, '#38bdf8')}${cell(BX[0] + CW, 46, '#38bdf8')}${cell(BX[0] + 2 * CW, 46, '#38bdf8')}${cell(BX[0] + 3 * CW, 46, '#38bdf8')}
+    ${cell(BX[0] + 4 * CW, 46, '#a78bfa')}${cell(BX[0] + 5 * CW, 46, '#a78bfa')}${cell(BX[0] + 6 * CW, 46, '#a78bfa')}${cell(BX[0] + 7 * CW, 46, '#a78bfa')}
+    ${hex(BX[0], ['1', '0', '0', '1', '0', '0', '1', '0'])}`;
+  const byte1 = Array.from({ length: 8 }, (_, i) => cell(BX[1] + i * CW, 46, '#fbbf24')).join('');
+  const byte2 = Array.from({ length: 8 }, (_, i) => cell(BX[2] + i * CW, 46, '#34d399')).join('');
+  const byte3 = Array.from({ length: 4 }, (_, i) => cell(BX[3] + i * CW, 46, '#f472b6')).join('')
+    + ['#22d3ee', '#22d3ee', '#22d3ee', '#22d3ee'].map((c, i) => cell(BX[3] + (4 + i) * CW, 46, c)).join('');
+
+  return `<svg class="model-svg" viewBox="0 0 720 190" xmlns="http://www.w3.org/2000/svg">
+    ${BX.map((x, i) => `<text class="arch-label" x="${x + 4 * CW - 4}" y="26" text-anchor="middle">+${i}</text>`).join('')}
+    ${BX.map((x) => bits(x, 46, 8)).join('')}
+
+    ${byte0}${byte1}${byte2}${byte3}
+
+    <text class="blk-expr" x="${BX[0] + 2 * CW}" y="92" text-anchor="middle">Fmt = 1001b</text>
+    <text class="blk-expr" x="${BX[0] + 6 * CW}" y="92" text-anchor="middle" style="fill:#c4b5fd">Type = 0010b</text>
+    <text class="blk-expr" x="${BX[1] + 4 * CW}" y="92" text-anchor="middle" style="fill:#fbbf24">PR_Sent_Counter[7:0]</text>
+    <text class="blk-expr" x="${BX[2] + 4 * CW}" y="92" text-anchor="middle" style="fill:#34d399">Stream_ID[7:0]</text>
+    <text class="blk-expr" x="${BX[3] + 2 * CW}" y="92" text-anchor="middle" style="fill:#f472b6">Sub-Stream[3:0]</text>
+    ${['P', 'M', 'K', 'T'].map((t, i) => `<text class="blk-expr" x="${BX[3] + (4 + i) * CW + (CW - 1) / 2}"
+      y="92" text-anchor="middle" style="fill:#22d3ee">${t}</text>`).join('')}
+
+    <text class="arch-note" x="56" y="122">Byte 3：P = PCRC · M = MAC · K = 密钥集（K0/K1）· T = TEE/TVM；M 在不聚合时必须为 1，P 只能在 M=1 时置位。</text>
+    <text class="arch-note" x="56" y="140">Sub-Stream：0000 Posted · 0001 Non-Posted · 0010 Completion · 0111 含 OHC-C 但非 IDE 的 TLP。</text>
+    <text class="arch-note" x="56" y="158">整前缀 1 DW = 4 B，必须位于所有其它 End-to-End Prefix 之前；Flit Mode 改用 OHC-C，MAC/PCRC 放在 Trailer。</text>
+    <text class="arch-note" x="56" y="176">PR_Sent_Counter 只对非 UIO 的 Non-Posted 请求与完成有效，Posted 请求中该字段保留。</text>
+  </svg>`;
+}
+
+/** IDE 模型：控制平面建立流，数据平面做 AES-GCM；并给出开销估算。 */
+export function ideModel(ctx = {}) {
+  const link = ctx.link || {};
+  const gen = link.gen ?? 4;
+  const width = link.width ?? 8;
+  const flit = !!link.flitMode;
+  const prefix = 4;
+  const mac = 12;
+  const mss = 256;
+  const pctOf = (o) => `${(o / (mss + o) * 100).toFixed(1)}%`;
+  const agg4 = prefix + mac / 4;
+  return `<div class="model-head">
+      <span class="model-badge">IDE · 完整性 / 数据加密</span>
+      Gen${gen} ×${width} · ${flit ? 'FM：OHC-C + Trailer' : 'NFM：IDE Prefix + MAC'} · 密钥 256 b
+    </div>
+
+    ${sect('架构', '数据平面在 TL 与 DL 之间加解密；控制平面先认证、再编程密钥、最后启用流 · 点击方块查看细节')}
+    ${ideArch(link)}
+
+    ${sect('两种流的范围', 'Link IDE 保护整条链路；Selective IDE 只保护选定 TLP，可跨 Switch 逐跳建立')}
+    ${stateTable(['类型', '保护对象', '部署边界', '典型用途'], IDE_STREAMS)}
+    <p class="hint">同一对端口可以同时使用 Link IDE 与 Selective IDE：Selective 关联的 TLP 用该流的密钥，其余 TLP 用 Link IDE 的密钥。
+      Selective IDE 不支持 I/O 请求；配置请求与完成可选保护；本地前缀在 Selective 流中不参与 MAC。</p>
+
+    ${sect('IDE TLP 前缀布局（NFM）', 'IDE Prefix 固定 1 DW = 4 B，必须位于所有其它端到端前缀之前 · 逐字节 / 逐位')}
+    ${demo(idePrefixSvg(), 'Byte 0 的 Fmt=1001b 表示端到端 TLP Prefix，Type=0010b 表示 IDE；Byte 3 低位是 P / M / K / T 四个标志。', [
+    '<i class="sw blue"></i>Byte 0：Fmt / Type，接收端据此识别这是 IDE Prefix。',
+    '<i class="sw amber"></i>Byte 1：PR_Sent_Counter，用于检测 Non-Posted 请求的重放 / 丢失。',
+    '<i class="sw green"></i>Byte 2：Stream_ID，决定使用哪条流的密钥。',
+    'Byte 3：Sub-Stream 选子流，P 带 PCRC、M 带 MAC、K 选密钥集、T 标记 TEE/TVM。',
+  ])}
+    ${stateTable(['字节 / 位', '字段', '含义'], IDE_FIELDS)}
+
+    ${sect('动态演示', '明文进、密文出；对端先验 MAC 再解密，失败直接丢弃')}
+    ${demo(ideTlpSvg(), 'A 是认证数据（前缀 + Header），P 是明文载荷；加密后只传 C 与 MAC。任何篡改都会让对端的 GHASH 结果不匹配。', [
+    '<i class="sw blue"></i>IDE Prefix / OHC-C：告诉接收端「用哪个流、哪个子流、哪套密钥」。',
+    '<i class="sw amber"></i>Payload 加密：AES-GCM 的 CTR 部分产生密文，长度不变。',
+    '<i class="sw green"></i>MAC：96 b 认证标签，覆盖 A 与 C；对端校验通过后才解密交付。',
+    'PCRC 用于发现加解密逻辑自身的故障，不替代 MAC；ECRC 与 IDE 不能同时使用。',
+  ])}
+
+    ${sect('IDE 扩展能力（IDE CAP）', '结构 ID 0030h、Version 1h；Header → Capability → Control → Link 块 ×0–8 → Selective 块 ×0–255')}
+    ${stateTable(['部分', '关键内容', '说明'], IDE_CAP_STRUCT)}
+    ${stateTable(['位', 'IDE Capability Register', '含义'], IDE_CAP_BITS)}
+    ${stateTable(['位', 'Stream Control / Status 字段', '含义'], IDE_STREAM_CTRL)}
+    <p class="hint">Stream Enable 清 0 会立即把流置回 Insecure；Selected Algorithm、PCRC、RID Base/Limit 与 V 位必须在 Enable 之前配置。
+      Default Stream 只适用于 Endpoint Upstream Port，同一 TC 只能有一个默认流。</p>
+
+    ${sect('IDE 密钥管理（IDE_KM）', '基于 SPDM 安全会话：QUERY → KEY_PROG ×6 → K_SET_GO（先 Rx 后 Tx）→ K_GOSTOP_ACK')}
+    ${stateTable(['Object ID', '数据对象', '方向', '内容 / 作用'], IDE_KM_OBJS)}
+    ${stateTable(['规则', '内容'], IDE_KM_RULES)}
+    <p class="hint">KEY_PROG 的 Key 长度由 Selected Algorithm 决定（本版本为 256 b），IFV 为 64 b 且在建立流与换钥时从 0000_0001h 开始。
+      两个 Key Set 支持不中断业务的热切换：先编程备用 bank，再翻转 K 位，旧 bank 在收到新键的 TLP 后失效。</p>
+
+    ${sect('建立流程', '认证 → 安全会话 → 编程密钥 → 触发启用；IDE_KM 只是其中一个环节')}
+    ${stateTable(['步骤', '做什么', '依靠'], [
+    ['1. 身份', '确认两个 Partner 端口所在组件的身份与度量', 'CMA-SPDM / 平台策略 / 隐式信任'],
+    ['2. 会话', '建立 SPDM 安全会话，保证密钥传输机密且完整', 'DOE 01h / 02h，或 MCTP'],
+    ['3. 密钥', 'QUERY 读能力；对 3 个子流 × Rx/Tx 各发一次 KEY_PROG，收 KP_ACK', 'IDE_KM：256 b Key + 64 b IFV'],
+    ['4. 启用', '先给两端发 K_SET_GO(Rx)，再发 K_SET_GO(Tx)，最后置 Stream Enable', '10 ms 内生效；K_GOSTOP_ACK 确认'],
+  ])}
+    <p class="hint">IDE_KM 的请求 / 响应本身必须放在 Secured-SPDM 里传递；未受保护的 IDE_KM 数据对象必须丢弃且不响应。
+      每个流 3 个子流 × Rx/Tx 共 6 把密钥，收发与子流之间不得复用。</p>
+
+    ${sect('状态与错误', '流状态决定能不能发；错误决定丢弃还是继续')}
+    ${stateTable(['状态', '条件', '行为'], IDE_STATES)}
+    ${stateTable(['错误', '触发', '处理'], IDE_ERRORS)}
+    <p class="hint">K 位切换后接收端必须切到新密钥并作废旧 bank；同流其它子流不受影响。换钥不需要把流停下来。</p>
+
+    ${sect('开销估算', '把 MAC 摊到每个 TLP 上，再和载荷比')}
+    ${formula([
+    'C = AES-GCM_Enc(K, IV, P)；MAC = GHASH_H(A, C) ⊕ E_K(J0)',
+    `每 TLP 开销 = ${prefix} B 前缀 + ${mac} B MAC（+4 B PCRC）`,
+    `聚合 4 个 TLP：开销 ≈ ${prefix} + ${mac}/4 = ${agg4.toFixed(1)} B/TLP`,
+    `有效带宽 ≈ 链路带宽 × MSS / (MSS + 开销)`,
+  ], `${mss} B 载荷时：不聚合 ${prefix + mac} B → ${pctOf(prefix + mac)}；聚合 4 个 ${agg4.toFixed(1)} B → ${pctOf(agg4)}。
+     估算只含字节开销，不含加解密延迟、聚合等待与重传；Gen${gen} ×${width} 的线速为链路速率扣除编码开销后的值。`)}
+
+    ${sect('与场景的对应')}
+    <p class="model-assume">IDE 叠加在现有 TLP 通路之上：模型里的 Gen / Lane / Flit 配置跟随顶栏，但本模拟器不对真实 TLP 做 AES-GCM，
+      也不生成 IDE Prefix / MAC，因此时间轴里不会有 IDE 事件。TDISP（第 11 章）用 T 位把 TLP 关联到 TVM，
+      并要求受保护链路启用 IDE；IDE 只保证端口到端口的机密性与完整性，片上隔离与访问控制仍由 TSM / DSM 负责。</p>`;
+}
+
+/* ---------- TDISP：TEE 设备接口安全协议（PCIe 6.2 第 11 章） ---------- */
+
+const TDISP_ROLES = [
+  ['TVM', 'TEE 虚拟机', 'TDI 的拥有者；T 位 TLP 的归属方'],
+  ['TSM', '主机侧 TEE 安全管理器', '发起 TDISP、绑定 IDE 流、代表 TVM 决策'],
+  ['DSM', '设备侧安全管理器', '锁定 TDI 配置、执行 TDISP 请求'],
+  ['TDI', 'TEE 设备接口', 'Function / PF / VF 中可分配给 TVM 的安全子集'],
+  ['VMM / PF', '资源管理', '配置 TDI，但不在 TVM 的 TCB 内'],
+];
+
+const TDISP_STATES = [
+  ['CONFIG_UNLOCKED', '默认状态；VMM 配置 TDI', '拒绝 T=1 的内存请求；STOP 可回到这里', '81h 82h 83h 85h 87h'],
+  ['CONFIG_LOCKED', 'LOCK_INTERFACE 后锁定配置', '仍拒绝 T=1 请求；跟踪配置变化', '84h 85h 86h 87h'],
+  ['RUN', 'START_INTERFACE 后运行', 'TVM 可访问；T=1 只能走绑定流', '84h 85h 87h 88h 89h 8Ah'],
+  ['ERROR', '检测到安全违规', '不暴露机密数据；清理后经 STOP 回 UNLOCKED', '85h 87h'],
+];
+
+const TDISP_CONFIG_BITS = [
+  ['Device Capabilities +04h bit30', 'TEE-IO Supported', '置 1 表示 Function 实现 TDISP；T 位按 TDISP 解释'],
+  ['IDE Capability +04h bit24', 'TEE-Limited Stream Supported', '允许 Selective IDE 只承载 T=1 的 TLP'],
+  ['Selective IDE Stream Control bit23', 'TEE-Limited Stream', 'Enable 后变 RO；仅 T=1 的 TLP 可关联该流'],
+  ['IDE Prefix / OHC-C Sub-Stream', '000 / 001 / 010 / 0111', 'Posted / Non-Posted / Completion / 非 IDE 的 OHC-C'],
+];
+
+const TDISP_CAPS = [
+  ['DSM_CAPS', '4 B', 'DSM 能力标志，当前保留（全 0）'],
+  ['REQ_MSGS_SUPPORTED', '16 B', '请求码位图：bit index = 请求码 − 80h'],
+  ['LOCK_INTERFACE_FLAGS_SUPPORTED', '2 B', '设备支持的 LOCK FLAGS 子集'],
+  ['DEV_ADDR_WIDTH', '1 B', '设备地址位数；52 表示支持 Address[51:0]'],
+  ['NUM_REQ_THIS', '1 B', '单个 TDI 允许的未完成请求数'],
+  ['NUM_REQ_ALL', '1 B', '该 DSM 下所有 TDI 允许的未完成请求数'],
+];
+
+const TDISP_LOCK_FLAGS = [
+  ['NO_FW_UPDATE', '1 = 锁定 / 运行期间禁止固件更新', '升级前必须先 STOP 回 CONFIG_UNLOCKED'],
+  ['System CLS', '0 = 64 B，1 = 128 B', '与 LN Requester 的 Cache Line Size 校验一致'],
+  ['LOCK_MSIX', '锁定 MSI-X Table 与 PBA', '未锁定则不得出现在 DEVICE_INTERFACE_REPORT 中'],
+  ['BIND_P2P', '允许后续 BIND_P2P_STREAM', '需同时给出有效的 P2P 地址掩码'],
+  ['ALL_REQUEST_REDIRECT', '所有 ATS 已翻译请求上送 RC 做访问检查', '防止 TDI 内部地址绕过访问控制'],
+];
+
+const TDISP_REPORT = [
+  ['INTERFACE_INFO', 'bit0 禁止固件更新；bit1 无 PASID DMA；bit2 有 PASID DMA；bit3 ATS；bit4 PRS'],
+  ['MSI_X_MESSAGE_CONTROL', 'MSI-X 未支持或 Table 未锁定时必须为 0'],
+  ['LNR_CONTROL / TPH_CONTROL', '对应能力未支持，或 MSI-X 未锁定时必须为 0'],
+  ['MMIO_RANGE_COUNT', '报告中的 MMIO 范围个数 N'],
+  ['MMIO_RANGE', '每项 16 B：起始 4K 页（加 MMIO_REPORTING_OFFSET）+ 页数 + 属性'],
+  ['Range 属性', 'bit0 MSI-X Table；bit1 PBA；bit2 IS_NON_TEE_MEM；bit3 可更新；bits31:16 Range ID'],
+];
+
+const TDISP_LOCK_ERRORS = [
+  ['INTERFACE_ID 不属于该设备', 'INVALID_INTERFACE（0101h）'],
+  ['TDI 不在 CONFIG_UNLOCKED', 'INVALID_INTERFACE_STATE（0004h）'],
+  ['默认流不匹配 / 子流密钥缺失 / 密钥非本 SPDM 会话 / 多个默认流 / 非 TC0', 'INVALID_REQUEST（0001h）'],
+  ['PF BAR、ROM、VF BAR 重叠，或 Resizable BAR 尺寸不支持', 'INVALID_DEVICE_CONFIGURATION（0104h）'],
+  ['Phantom Functions、页大小、CLS、TPH ST 模式不支持', 'INVALID_DEVICE_CONFIGURATION（0104h）'],
+];
+
+const TDISP_START_STOP = [
+  ['START 86h', 'nonce 必须等于 LOCK 生成值，TDI 必须在 CONFIG_LOCKED；成功后销毁 nonce', 'INVALID_NONCE / INVALID_INTERFACE_STATE'],
+  ['STOP 87h', '中止在途操作、DMA 完成或中止、ATS 失效、PRI 收尾、擦除机密、回收密钥', '完成后回 CONFIG_UNLOCKED'],
+];
+
+const TDISP_MSGS = [
+  ['81h', 'GET_TDISP_VERSION', 'N/A', '读版本；V1.0 编码为 10h'],
+  ['82h', 'GET_TDISP_CAPABILITIES', 'N/A', '读协议能力'],
+  ['83h', 'LOCK_INTERFACE_REQUEST', 'CONFIG_UNLOCKED', '锁定配置；携带 IDE Stream ID 与 nonce'],
+  ['84h', 'GET_DEVICE_INTERFACE_REPORT', 'CONFIG_LOCKED / RUN', '返回 TDI 报告供 TVM 评估'],
+  ['85h', 'GET_DEVICE_INTERFACE_STATE', '所有状态', '查询 TDI 当前状态'],
+  ['86h', 'START_INTERFACE_REQUEST', 'CONFIG_LOCKED', '校验 nonce，把 TDI 置入 RUN'],
+  ['87h', 'STOP_INTERFACE_REQUEST', '所有状态', '清理机密数据并回到 CONFIG_UNLOCKED'],
+  ['88h / 89h', 'BIND / UNBIND_P2P_STREAM', 'RUN', '绑定 / 解绑 P2P 用的 Selective IDE 流'],
+  ['8Ah', 'SET_MMIO_ATTRIBUTE_REQUEST', 'RUN', '更新指定 MMIO 范围的属性'],
+];
+
+const TDISP_TLP_RULES = [
+  ['T 位', 'T=1 表示 TLP 属于 TVM', '只有绑定到该 TDI 的 IDE 流可承载；Completion 的 T 位必须与请求一致'],
+  ['Requester 请求', 'CONFIG_LOCKED / RUN 才可发 T=1', '未绑定 P2P 的 TLP 必须走锁定时的 default stream'],
+  ['内存读', '仅 RUN，且 T=1', '完成后仍须 RUN 才处理，否则拒绝'],
+  ['内存写', '仅 RUN，且 T=1', 'MSI / MSI-X 中断按下一行处理'],
+  ['MSI / MSI-X', 'MSI 与未锁定的 MSI-X 用 T=0；已锁定并报告的 MSI-X 用 T=1', 'CONFIG_LOCKED 只允许 T=0 的中断'],
+  ['Completer 规则', 'IS_NON_TEE_MEM=0 的内存必须同时满足 T=1、RUN、绑定流', '任一条件不满足即拒绝'],
+  ['I/O 请求', 'TDI 不得依赖 I/O 资源', '避免绕过 MMIO / DMA 访问控制'],
+  ['ATS / PRI', '失效请求、失效完成、Page Request、PRG 按第 11.4.10 节', 'T 位与流绑定规则同样适用'],
+  ['P2P', '仅 RUN；需 ATS + 绑定的 Selective IDE 流', 'TSM 与 VMM 协调 ACS 重定向'],
+];
+
+const TDISP_ERRORS = [
+  ['配置变更', '锁定后 TDI 配置被修改', '转 ERROR'],
+  ['FLR', '对 TDI 做功能级复位', '转 ERROR；PF 复位影响下属 VF TDI'],
+  ['Requester ID 改变', '身份不再可信', '转 ERROR'],
+  ['IDE 流 Insecure', '绑定到 TDI 的流失去安全状态', '转 ERROR'],
+  ['不可恢复的数据完整性错误', '中毒 TLP 等无法恢复的错误', '转 ERROR'],
+];
+
+function tdispBox(x, y, w, h, title, sub, color, key) {
+  const ty = y + Math.round(h * 0.38);
+  const sy = y + Math.round(h * 0.62);
+  return `<g class="arch-link" data-arch="${key}" role="button" tabindex="0" aria-label="${title}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#0c1729" stroke="${color}"/>
+    <text class="blk-title" x="${x + w / 2}" y="${ty}" text-anchor="middle">${title}</text>
+    <text class="blk-expr" x="${x + w / 2}" y="${sy}" text-anchor="middle" style="fill:${color}">${sub}</text>
+  </g>`;
+}
+
+function tdispArch() {
+  return `<svg class="model-svg" viewBox="0 0 720 470" xmlns="http://www.w3.org/2000/svg">
+    <!-- Host -->
+    <rect x="8" y="28" width="704" height="146" rx="14" fill="rgba(30,58,95,0.12)"
+      stroke="#2b4162" stroke-dasharray="7 5"/>
+    <text class="arch-note" x="18" y="42">TEE I/O Capable Host</text>
+
+    ${tdispBox(20, 44, 96, 42, 'VMM', '资源分配', '#94a3b8', 'tdisp-vmm')}
+    ${tdispBox(128, 44, 96, 42, 'Legacy VM', '信任 VMM', '#94a3b8', 'tdisp-legacy')}
+    ${tdispBox(236, 44, 96, 42, 'TVM', 'TEE 虚拟机', '#38bdf8', 'tdisp-tvm')}
+    ${tdispBox(344, 44, 96, 42, 'TVM', 'TEE 虚拟机', '#38bdf8', 'tdisp-tvm2')}
+    ${tdispBox(456, 44, 236, 42, 'TEE Security Manager（TSM）', '认证 · TDISP · IDE 密钥', '#a78bfa', 'tdisp-tsm')}
+
+    ${tdispBox(20, 104, 140, 42, 'TEE memory', '机密 / 可选完整性', '#34d399', 'tdisp-mem')}
+    ${tdispBox(172, 104, 140, 42, 'Non-TEE memory', '无机密性保证', '#94a3b8', 'tdisp-mem2')}
+    ${tdispBox(324, 104, 140, 42, 'TA / IOMMU', 'HPA → TDI', '#a78bfa', 'tdisp-ta')}
+    <text class="arch-label" x="480" y="130" style="fill:#7b93b1">HPA · RID / PASID</text>
+
+    <line x1="284" y1="88" x2="348" y2="102" stroke="#38bdf8" stroke-width="1.3"/>
+    <polygon points="352,104 344,100 347,93" fill="#38bdf8"/>
+    <line x1="392" y1="88" x2="392" y2="100" stroke="#38bdf8" stroke-width="1.3"/>
+    <polygon points="392,104 388,96 396,96" fill="#38bdf8"/>
+    <path d="M90,146 L90,158 L394,158 L394,150" fill="none" stroke="#34d399" stroke-width="1.3"/>
+    <polygon points="394,146 390,154 398,154" fill="#34d399"/>
+    <text class="arch-label" x="240" y="170" text-anchor="middle" style="fill:#34d399">MMIO / DMA</text>
+
+    <!-- Fabric -->
+    <rect x="8" y="186" width="704" height="52" rx="12" fill="rgba(56,189,248,0.05)"
+      stroke="#2b4162" stroke-dasharray="5 4"/>
+    <text class="arch-note" x="360" y="204" text-anchor="middle">PCIe Fabric（Switches need not be trusted）</text>
+    <text class="arch-note" x="360" y="221" text-anchor="middle">数据面必须 IDE；管理面走 SPDM / TDISP 安全会话</text>
+
+    <g class="arch-link" data-arch="tdisp-msg" role="button" tabindex="0" aria-label="SPDM / TDISP 安全会话">
+      <line x1="574" y1="88" x2="574" y2="264" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="6 4"/>
+      <polygon points="574,268 570,260 578,260" fill="#a78bfa"/>
+    </g>
+    <text class="arch-label" x="582" y="170" style="fill:#c4b5fd">SPDM / TDISP（DOE）</text>
+
+    <g class="arch-link" data-arch="tdisp-data" role="button" tabindex="0" aria-label="MMIO / DMA 数据通路">
+      <path d="M450,148 L450,178 L650,178 L650,262" fill="none" stroke="#22d3ee" stroke-width="1.4"/>
+      <polygon points="650,266 646,258 654,258" fill="#22d3ee"/>
+    </g>
+    <text class="arch-label" x="642" y="212" text-anchor="end" style="fill:#22d3ee">MMIO / DMA + IDE</text>
+
+    <!-- Device -->
+    <rect x="8" y="250" width="704" height="180" rx="14" fill="rgba(30,58,95,0.12)"
+      stroke="#2b4162" stroke-dasharray="7 5"/>
+    <text class="arch-note" x="18" y="264">TEE I/O Capable Device</text>
+
+    ${tdispBox(20, 274, 96, 42, 'PF', '管理接口', '#f87171', 'tdisp-pf')}
+    ${tdispBox(128, 274, 96, 42, 'TDI', 'TDISP 接口', '#34d399', 'tdisp-tdi')}
+    ${tdispBox(236, 274, 96, 42, 'TDI', 'TDISP 接口', '#34d399', 'tdisp-tdi2')}
+    ${tdispBox(344, 274, 96, 42, 'TDI', 'TDISP 接口', '#34d399', 'tdisp-tdi3')}
+    ${tdispBox(456, 274, 140, 42, 'DSM', '设备侧信任代理', '#a78bfa', 'tdisp-dsm')}
+    ${tdispBox(608, 274, 84, 42, 'ATC', 'ATS 缓存', '#a78bfa', 'tdisp-atc')}
+
+    <line x1="116" y1="295" x2="124" y2="295" stroke="#f87171" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <line x1="452" y1="295" x2="444" y2="295" stroke="#a78bfa" stroke-width="1.4"/>
+    <polygon points="440,295 448,291 448,299" fill="#a78bfa"/>
+
+    <g class="arch-link" data-arch="tdisp-statechip" role="button" tabindex="0" aria-label="TDISP 状态">
+      <rect x="128" y="326" width="96" height="30" rx="6" fill="#0c1729" stroke="#3a5578"/>
+      <text class="blk-expr" x="176" y="345" text-anchor="middle">TDISP state</text>
+      <rect x="236" y="326" width="96" height="30" rx="6" fill="#0c1729" stroke="#3a5578"/>
+      <text class="blk-expr" x="284" y="345" text-anchor="middle">TDISP state</text>
+      <rect x="344" y="326" width="96" height="30" rx="6" fill="#0c1729" stroke="#3a5578"/>
+      <text class="blk-expr" x="392" y="345" text-anchor="middle">TDISP state</text>
+    </g>
+
+    <g class="arch-link" data-arch="tdisp-cert" role="button" tabindex="0" aria-label="设备证书与私钥">
+      <rect x="456" y="326" width="236" height="52" rx="8" fill="#0c1729" stroke="#a78bfa" stroke-dasharray="4 3"/>
+      <text class="blk-title" x="574" y="344" text-anchor="middle">ModelCert · per-part DevPrivKey</text>
+      <text class="blk-expr" x="574" y="360" text-anchor="middle" style="fill:#c4b5fd">DevCert（设备身份与度量）</text>
+    </g>
+
+    <text class="arch-note" x="20" y="404">PF 由 VMM 中的 PF 驱动管理，不在 TVM 的 TCB 内；TDI 可以是整个设备、非 IOV Function、PF（含下属 VF）或单个 VF。</text>
+    <text class="arch-note" x="20" y="422">TDI 在任何时刻只有一个 TDISP 状态；DSM 独立于 PF，负责锁定、报告、启动、停止与配置跟踪。</text>
+
+    <!-- 图例 -->
+    <rect x="20" y="448" width="10" height="8" rx="2" fill="#38bdf8"/>
+    <text class="arch-label" x="36" y="456" style="fill:#7dd3fc">在 TVM 的 TCB（接受设备的 TVM）</text>
+    <rect x="240" y="448" width="10" height="8" rx="2" fill="#34d399"/>
+    <text class="arch-label" x="256" y="456" style="fill:#6ee7b7">在所有 TVM 的 TCB</text>
+    <rect x="430" y="448" width="10" height="8" rx="2" fill="#f87171"/>
+    <text class="arch-label" x="446" y="456" style="fill:#fca5a5">不在 TVM 的 TCB</text>
+  </svg>`;
+}
+
+function tdispStateSvg() {
+  const box = (x, y, title, sub, codes, color) => `<rect x="${x}" y="${y}" width="150" height="74" rx="9"
+      fill="#0c1729" stroke="${color}"/>
+    <text class="blk-title" x="${x + 75}" y="${y + 20}" text-anchor="middle">${title}</text>
+    <text class="blk-expr" x="${x + 75}" y="${y + 38}" text-anchor="middle" style="fill:${color}">${sub}</text>
+    <text class="blk-val" x="${x + 75}" y="${y + 58}" text-anchor="middle">可收：${codes}</text>`;
+  return `<svg class="model-svg" viewBox="0 0 720 330" xmlns="http://www.w3.org/2000/svg">
+    ${box(30, 88, 'CONFIG_UNLOCKED', '默认 / VMM 配置', '81h 82h 83h 85h 87h', '#94a3b8')}
+    ${box(270, 88, 'CONFIG_LOCKED', '配置已锁定', '84h 85h 86h 87h', '#fbbf24')}
+    ${box(510, 88, 'RUN', 'TVM 可访问', '84h 85h 87h 88h 89h 8Ah', '#34d399')}
+    ${box(270, 210, 'ERROR', '安全违规', '85h 87h', '#f87171')}
+
+    ${archArrow(180, 266, 125, 'LOCK 83h', 'tdisp-lock')}
+    ${archArrow(420, 506, 125, 'START 86h', 'tdisp-start')}
+
+    <line x1="345" y1="162" x2="345" y2="206" stroke="#f87171" stroke-width="1.4"/>
+    <polygon points="345,210 341,202 349,202" fill="#f87171"/>
+    <text class="arch-label" x="352" y="188" style="fill:#f87171">错误</text>
+
+    <line x1="585" y1="162" x2="432" y2="208" stroke="#f87171" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <polygon points="428,210 437,208 434,201" fill="#f87171"/>
+    <text class="arch-label" x="522" y="194" style="fill:#f87171">错误</text>
+
+    <path d="M270,247 C170,247 105,215 105,166" fill="none" stroke="#38bdf8" stroke-width="1.4"/>
+    <polygon points="105,162 101,170 109,170" fill="#38bdf8"/>
+    <text class="arch-label" x="122" y="262" style="fill:#7dd3fc">STOP 87h</text>
+
+    <text class="arch-note" x="30" y="316">CONFIG_LOCKED / RUN = locked；CONFIG_UNLOCKED / ERROR = unlocked。STOP 可从任意状态回到 CONFIG_UNLOCKED。</text>
+  </svg>`;
+}
+
+function tdispFlowSvg() {
+  const TSM = 170;
+  const DSM = 560;
+  const rows = [
+    [64, '① GET_TDISP_VERSION (81h)'],
+    [98, '② GET_TDISP_CAPABILITIES (82h)'],
+    [132, '③ LOCK_INTERFACE_REQUEST (83h) · IDE Stream ID + nonce'],
+    [166, '④ GET_DEVICE_INTERFACE_REPORT (84h)'],
+    [200, '⑤ START_INTERFACE_REQUEST (86h) · 校验 nonce'],
+  ];
+  const step = (y, i, label) => {
+    const t0 = 0.04 + i * 0.12;
+    const a = t0.toFixed(3);
+    const b = (t0 + 0.012).toFixed(3);
+    const c = (t0 + 0.07).toFixed(3);
+    const d = (t0 + 0.082).toFixed(3);
+    return `<line x1="${TSM}" y1="${y}" x2="${DSM}" y2="${y}" stroke="#38bdf8" stroke-width="1.3"/>
+      <polygon points="${DSM},${y} ${DSM - 7},${y - 3.5} ${DSM - 7},${y + 3.5}" fill="#38bdf8"/>
+      <text class="arch-label" x="${(TSM + DSM) / 2}" y="${y - 7}" text-anchor="middle">${label}</text>
+      <g opacity="0">
+        <animate attributeName="opacity" values="0;0;1;1;0;0"
+          keyTimes="0;${a};${b};${c};${d};1" dur="9s" repeatCount="indefinite"/>
+        <circle r="3" fill="#38bdf8"><animateMotion dur="9s" repeatCount="indefinite" calcMode="linear"
+          keyTimes="0;${a};${c};1" keyPoints="0;0;1;1" path="M${TSM},${y} L${DSM},${y}"/></circle>
+      </g>`;
+  };
+  const tail = (y) => `<line x1="${TSM}" y1="${y}" x2="${DSM}" y2="${y}" stroke="#34d399" stroke-width="1.3"/>
+    <polygon points="${DSM},${y} ${DSM - 7},${y - 3.5} ${DSM - 7},${y + 3.5}" fill="#34d399"/>
+    <text class="arch-label" x="${(TSM + DSM) / 2}" y="${y - 7}" text-anchor="middle" style="fill:#34d399">⑦ STOP_INTERFACE_REQUEST (87h) → CONFIG_UNLOCKED</text>`;
+  return `<svg class="model-svg" viewBox="0 0 720 330" xmlns="http://www.w3.org/2000/svg">
+    <line x1="${TSM}" y1="44" x2="${TSM}" y2="288" stroke="#22314c" stroke-dasharray="4 4"/>
+    <line x1="${DSM}" y1="44" x2="${DSM}" y2="288" stroke="#22314c" stroke-dasharray="4 4"/>
+    <rect x="${TSM - 40}" y="20" width="80" height="22" rx="6" fill="#0c1729" stroke="#a78bfa"/>
+    <text class="blk-title" x="${TSM}" y="35" text-anchor="middle">TSM</text>
+    <rect x="${DSM - 40}" y="20" width="80" height="22" rx="6" fill="#0c1729" stroke="#a78bfa"/>
+    <text class="blk-title" x="${DSM}" y="35" text-anchor="middle">DSM</text>
+
+    ${rows.map(([y, label], i) => step(y, i, label)).join('')}
+    <rect x="410" y="222" width="270" height="24" rx="6" fill="rgba(52,211,153,0.08)" stroke="#34d399"/>
+    <text class="arch-label" x="545" y="238" text-anchor="middle" style="fill:#34d399">⑥ RUN：T=1 的 TLP 只走绑定到 TDI 的 IDE 流</text>
+    ${tail(268)}
+
+    <text class="arch-note" x="12" y="310">每条请求都有对应响应；状态不合法或请求码不支持时返回 TDISP_ERROR（7Fh）。</text>
+  </svg>`;
+}
+
+/** TDISP 模型：TSM / DSM 管理 TDI 状态机，并用 IDE + T 位承载 TVM 数据。 */
+export function tdispModel(ctx = {}) {
+  const link = ctx.link || {};
+  const gen = link.gen ?? 4;
+  const width = link.width ?? 8;
+  const flit = link.flitMode ? 'OHC-C' : 'IDE Prefix';
+  return `<div class="model-head">
+      <span class="model-badge">TDISP · TEE 设备接口</span>
+      Gen${gen} ×${width} · ${flit} 的 T 位 · TDISP V1.0（10h）
+    </div>
+
+    ${sect('架构', '按 Figure 11-2 组织：VMM / Legacy VM 不在 TVM 的 TCB，TVM 只信任 TSM；设备侧 PF 不受信任，DSM 管理 TDI · 点击方块查看细节')}
+    ${tdispArch()}
+    <p class="hint">信任边界（图例）：蓝色 = 只在接受设备的 TVM 的 TCB；绿色 = 在所有 TVM 的 TCB；灰色 / 红色 = 不在 TVM 的 TCB。
+      TVM 的 MMIO 请求经 TA 用 HPA 路由到 TDI；TDI 发出的请求带 RID（可选 PASID），T 位把它们关联到 TVM。</p>
+
+    ${sect('角色分工', '谁在 TVM 的信任边界内，谁只负责资源管理')}
+    ${stateTable(['角色', '定位', '职责'], TDISP_ROLES)}
+    <p class="hint">TSM 的职责：分配内存 / CPU / TDI、维护 IOMMU 等访问控制、用 TDISP 管理 TDI 状态、建立并刷新 IDE 密钥。
+      DSM 的职责：设备身份认证与度量、编程 IDE 密钥、锁定 / 报告 / 附加 / 分离 TDI、隔离 TVM 数据。</p>
+
+    ${sect('能力与配置（.cap）', 'TDISP 能力由配置位与 TDISP_CAPABILITIES 共同描述')}
+    ${stateTable(['位置', '字段', '含义'], TDISP_CONFIG_BITS)}
+    ${stateTable(['字段', '大小', '含义'], TDISP_CAPS)}
+    <p class="hint">REQ_MSGS_SUPPORTED 的 bit index 等于请求码减 80h；未置位的请求码必须返回 UNSUPPORTED_REQUEST。
+      DEV_ADDR_WIDTH 让 TSM 知道设备能寻址多少位，NUM_REQ_THIS / NUM_REQ_ALL 限制未完成请求数量。</p>
+
+    ${sect('TDI 状态机', 'TSM 驱动 TDI 走完 配置 → 锁定 → 运行 → 停止 的生命周期；每个状态只接受固定消息')}
+    ${tdispStateSvg()}
+    ${stateTable(['状态', '进入条件', '行为', '允许的消息'], TDISP_STATES)}
+    <p class="hint">只有 CONFIG_LOCKED 与 RUN 是 locked；ERROR 与 CONFIG_UNLOCKED 是 unlocked。进入 ERROR 时不得再暴露 TVM 机密数据，清理可延迟到 STOP。</p>
+
+    ${sect('消息与顺序', '先认证、再锁定、再报告、最后启动；请求 / 响应都必须在安全会话内')}
+    ${demo(tdispFlowSvg(), 'LOCK 携带 IDE Stream ID 与设备生成的 nonce；START 校验同一 nonce，确保两次转换发生在同一个 SPDM 安全会话中。', [
+    '<i class="sw blue"></i>81h / 82h：读版本与能力，不依赖 TDI 状态。',
+    '<i class="sw amber"></i>83h：VMM 配置完成后锁定；携带 IDE Stream ID 与 nonce。',
+    '<i class="sw green"></i>84h / 86h：TVM 先看报告再批准；START 校验 nonce 后进入 RUN。',
+    '87h：任意状态都可 STOP，清理机密数据并回到 CONFIG_UNLOCKED。',
+  ])}
+    ${stateTable(['码', '请求', '合法状态', '作用'], TDISP_MSGS)}
+    <p class="hint">不支持的请求码必须返回 ERROR_CODE=UNSUPPORTED_REQUEST 的 TDISP_ERROR（7Fh）；未定义响应码按 TDISP_ERROR 处理。
+      LOCK 响应携带 32 B START_INTERFACE_NONCE，TDI 离开 CONFIG_LOCKED 或进入 ERROR 时必须销毁。</p>
+
+    ${sect('锁定参数与失败条件', 'LOCK 不是简单置位：它绑定 IDE 流、MMIO 偏移与一组锁定策略')}
+    ${stateTable(['FLAGS 位', '含义', '影响'], TDISP_LOCK_FLAGS)}
+    ${stateTable(['失败条件', '错误码'], TDISP_LOCK_ERRORS)}
+    <p class="hint">MMIO_REPORTING_OFFSET 会加到之后所有报告地址上，避免把主机物理地址泄露给 TVM；BIND_P2P_ADDRESS_MASK 在匹配 Selective IDE 地址关联前先清掉元数据位。</p>
+
+    ${sect('启动与停止', 'START 消费 nonce；STOP 负责把设备里的 TVM 痕迹清干净')}
+    ${stateTable(['消息', '动作', '错误 / 结果'], TDISP_START_STOP)}
+
+    ${sect('TDI 报告', 'DEVICE_INTERFACE_REPORT 可能分段返回，TVM 据此建立 MMIO 映射')}
+    ${stateTable(['字段', '内容'], TDISP_REPORT)}
+    <p class="hint">报告按 OFFSET / LENGTH 分段：响应里 PORTION_LENGTH 是本次长度，REMAINDER_LENGTH 是剩余长度，为 0 表示结束。
+      MMIO 范围按 BAR 升序报告，Range ID 低 3 位表示 BAR 等价指示（BEI）。</p>
+
+    ${sect('TLP 规则', 'T 位把 TLP 绑定到 TVM；IDE 流把这条通路加密')}
+    ${stateTable(['对象', '规则', '说明'], TDISP_TLP_RULES)}
+    <p class="hint">配置请求不要求加密，但锁定后的配置写入会被 DSM 跟踪；一旦影响到 TDI 安全属性，就按 ERROR 处理。RCiEP 等不需要 IDE 的场景可用等价的 T 位指示。</p>
+
+    ${sect('错误与降级', '锁定后任何可疑变化都转 ERROR，而不是继续运行')}
+    ${stateTable(['触发', '条件', '结果'], TDISP_ERRORS)}
+
+    ${sect('消息格式与安全传输', '所有 TDISP 消息共享固定头部，并作为 Secured-SPDM 的 Application Data 传输')}
+    ${formula([
+    '帧：TDISPVersion(1 B) + MessageType(1 B) + Reserved(2 B) + INTERFACE_ID(12 B) + payload',
+    '版本：Major[7:4] / Minor[3:0]；V1.0 = 10h',
+    '安全传输：Secured-SPDM，AEAD 使用 AES-256-GCM',
+    'nonce 绑定：LOCK 生成 → START 校验；非法状态 → TDISP_ERROR(7Fh)',
+  ], `当前链路 Gen${gen} ×${width}：TDISP 消息本身是管理面流量，经 DOE 逐 DW 搬运；
+     TVM 的真实数据走 IDE 流，T 位放在 ${flit} 中，链路开销按 IDE 模型计算。`)}
+
+    ${sect('与场景的对应')}
+    <p class="model-assume">本模拟器没有实现 TDISP 寄存器、TDISP 消息或 TDI 状态，也不重放 GET_* / LOCK / START 事件；
+      模型只解释协议与状态机。TDISP 依赖的 IDE、DOE 分别见同组的「IDE 完整性 / 数据加密」与「DOE 数据对象交换」。
+      设备内部的隔离、密钥保护与 PF 防篡改属于设备安全架构，规范只给出要求，不规定实现。</p>`;
 }
 
 /* ---------- 架构方块说明：点击方块弹出公式与物理含义 ---------- */
@@ -2387,6 +3228,473 @@ const ARCH_INFO = {
       ],
       meaning: '恢复动作按代价递增选择：先尝试功能级复位，失败再链路级复位，仍不可用才换卡。动作越重，t_reset 与 t_retrain 越大。',
       value: (s, sim) => `DPC ${sim.dpc.snapshot().state} · 链路 ${sim.link.ports.RC.state}`,
+    },
+  },
+  doe: {
+    'doe-sw': {
+      title: '系统固件 / 软件 · DOE 发起者',
+      kind: '软件',
+      io: '配置空间 → DOE 邮箱',
+      formula: [
+        'CfgWr：每次写 1 DW 到 Write Data Mailbox',
+        'CfgWr：写 Control.Go = 1 启动',
+        'CfgRd：每次读 1 DW 从 Read Data Mailbox',
+      ],
+      meaning: 'DOE 完全由配置请求驱动，没有自己的 TLP 类型；因此只能在配置空间可访问之后使用，也无法在 Function 之间直接 P2P。',
+      value: '逐 DW、全字节使能',
+    },
+    'doe-cfg': {
+      title: '配置请求通路',
+      kind: '通路',
+      io: '软件 ↔ Function 配置空间',
+      formula: ['CfgWr / CfgRd 均为 Non-Posted', '每次完成对应一个 DW 的搬运'],
+      meaning: '每次邮箱访问都要等 Completion，所以 DOE 的往返延迟远高于突发 TLP；它适合小数据对象与管理命令，不适合大数据搬运。',
+      value: '1 DW / 次',
+    },
+    'doe-regs': {
+      title: 'DOE 扩展能力寄存器块',
+      kind: '寄存器',
+      io: '配置空间 +00h … +14h',
+      formula: [
+        '+00h Capability Header / +04h Capabilities',
+        '+08h Control：Go、Abort、Interrupt Enable',
+        '+0Ch Status：Busy、Data Object Ready、Error',
+        '+10h Write Data Mailbox / +14h Read Data Mailbox',
+      ],
+      meaning: '邮箱是单缓冲：写侧与读侧各一个 32-bit 窗口，靠 Go / Busy / Ready 三个握手位串行化整个数据对象。',
+      value: '24 B · 6 个寄存器',
+    },
+    'doe-object': {
+      title: '数据对象（Data Object）',
+      kind: '数据',
+      io: '软件 → DOE 实例',
+      formula: [
+        'DW0：Vendor ID [15:0] + Data Object Type [23:16]',
+        'DW1：Length [17:0] + Connection ID [29:18]',
+        '长度 2 DW … 2^18 DW；0001h 非法',
+      ],
+      meaning: '类型由 Vendor ID + Type 两级命名；长度不符时整个对象被静默丢弃，过长则只处理期望部分。',
+      value: '2 DW 起',
+    },
+    'doe-engine': {
+      title: 'DOE 实例 · 解析与分发',
+      kind: '硬件',
+      io: '数据对象 → 特性实现',
+      formula: [
+        '检查 Busy、接收完整对象、置 Busy=1',
+        '解析 DW0 / DW1，按 Type 交给特性',
+        '1 s 内完成：Ready=1；否则 Error=1',
+      ],
+      meaning: '一个 Function 可以有多个 DOE 实例；同一实例同一时间只处理一个数据对象，多个 feature 必须由软件串行化。',
+      value: '1 s 完成时限',
+    },
+    'doe-feature': {
+      title: 'DOE 特性',
+      kind: '能力',
+      io: '数据对象 → 具体功能',
+      formula: [
+        'Discovery（00h）：必须实现，枚举类型',
+        'CMA-SPDM（01h / 02h）：认证与安全会话',
+        'IDE_KM：经安全会话编程 IDE 密钥',
+        'Async Message（05h）：设备主动上报',
+      ],
+      meaning: 'DOE 本身只是传输层；真正做什么由特性定义。Discovery 让软件在不预先知道实现的情况下枚举其余类型。',
+      value: 'Discovery 必选',
+    },
+    'doe-io': {
+      title: 'DOE → Function 内部',
+      kind: '通路',
+      io: '数据对象 → 度量 / 密钥 / 配置',
+      formula: ['数据对象由 Function 内部逻辑消费', '结果通过同一邮箱返回'],
+      meaning: '特性实现可以访问设备内部的度量、密钥库或配置；DOE 不规定内部实现，只规定邮箱与数据对象格式。',
+      value: '实现相关',
+    },
+    'doe-consumer': {
+      title: 'Function 内部 · 特性实现',
+      kind: '硬件',
+      io: 'DOE 数据对象 ↔ 设备内部',
+      formula: ['认证与度量结果', '密钥写入 / 状态查询', '设备配置与调试接口'],
+      meaning: 'DOE 提供标准化入口，但具体能力与安全边界由设备实现；规范只要求 Discovery 可用。',
+      value: '由特性定义',
+    },
+  },
+  ide: {
+    'ide-plain': {
+      title: 'TL 明文 TLP',
+      kind: '信号',
+      io: 'TL → IDE 引擎',
+      formula: ['A = IDE Prefix / OHC-C ‖ Header', 'P = TLP Data Payload'],
+      meaning: '进入 IDE 引擎前是普通 TLP；IDE 把 Header 当作附加认证数据（不加密），只加密数据载荷。',
+      value: 'A / P 分离',
+    },
+    'ide-in': {
+      title: 'TLP 进入 IDE 引擎',
+      kind: '通路',
+      io: 'TL → IDE TX',
+      formula: ['按 Stream 关联规则选择 TLP', 'Link IDE：除 Selective 外的全部 TLP', 'Selective IDE：按 Stream_ID 等规则选定'],
+      meaning: '先判定 TLP 属于哪条流、哪个子流，再决定使用哪套密钥；不属于任何流的 TLP 走普通路径。',
+      value: '按流关联',
+    },
+    'ide-gcm': {
+      title: 'IDE TX · AES-GCM',
+      kind: '运算',
+      io: 'A / P → C + MAC',
+      formula: [
+        'C = GCTR_K(IV, P)',
+        'MAC = GHASH_H(A, C) ⊕ E_K(J0)',
+        'MAC 长度固定 96 b',
+      ],
+      meaning: 'AES-GCM 同时提供机密性与完整性：载荷被加密，头部与密文一起被认证；任何一位改动都会让 MAC 不匹配。',
+      value: 'AES-GCM · 96 b MAC',
+    },
+    'ide-enc': {
+      title: '加密输出',
+      kind: '信号',
+      io: '明文 P → 密文 C',
+      formula: ['|C| = |P|（CTR 模式不改变长度）', 'MAC 附在 TLP 上，计入 Header Credit'],
+      meaning: '密文与明文等长；额外开销只有前缀、MAC 与可选 PCRC。MAC 不是数据载荷，流控上按 Header Credit 计算。',
+      value: '长度不变',
+    },
+    'ide-wire': {
+      title: '线上 IDE TLP',
+      kind: '信号',
+      io: 'IDE TX → 链路',
+      formula: [
+        'NFM：IDE Prefix（1 DW）+ Header + C + MAC',
+        'FM：OHC-C + Header + C + Trailer（MAC / PCRC）',
+      ],
+      meaning: '接收端靠前缀 / OHC-C 识别流与子流；同一对 Partner 端口必须同为 NFM 或同为 FM，否则按 Misrouted IDE TLP 处理。',
+      value: '4 B + 12 B',
+    },
+    'ide-link': {
+      title: 'IDE 流标识与密钥选择',
+      kind: '机制',
+      io: '前缀 / OHC-C → 密钥库',
+      formula: ['Stream_ID[7:0] + Sub-Stream[2:0]', 'K 位选择 K0 / K1 密钥集'],
+      meaning: 'Stream ID 决定用哪条流的密钥，Sub-Stream 决定具体子流，K 位支持不中断业务地切换密钥。',
+      value: 'Stream + 子流 + K 位',
+    },
+    'ide-link2': {
+      title: '物理链路 · 威胁模型',
+      kind: '环境',
+      io: '两个 IDE 端点之间',
+      formula: [
+        '可被窃听：分析仪 / 中间板 / 流氓 Retimer',
+        '可被篡改：增删 TLP、改内容、重排',
+        '可被替换：伪装成已认证设备',
+      ],
+      meaning: 'IDE 假设链路可被物理攻击，因此必须同时保证机密性、完整性与重放保护；认证后的密钥让伪装设备无法生成合法 IDE TLP。',
+      value: '链路是攻击面',
+    },
+    'ide-rx': {
+      title: 'IDE RX · 校验与解密',
+      kind: '运算',
+      io: 'C / MAC → 明文 TLP',
+      formula: ['重算 GHASH 并比较 MAC', 'MAC 一致 → 解密并交付', 'MAC 不符 → 丢弃 + IDE Check Failed'],
+      meaning: '接收端先认证再解密，绝不把未通过校验的数据交给上层；PCRC 再额外检查加解密逻辑是否出错。',
+      value: '先验后解',
+    },
+    'ide-ctrl': {
+      title: '系统固件 / 软件 · 中央权威',
+      kind: '软件',
+      io: '配置寄存器 + 密钥编程',
+      formula: [
+        '配置 IDE Extended Capability（ID 0030h）',
+        '选择算法、PCRC、聚合、TC 与 Stream ID',
+        '触发两端 IDE_KM，最后置 Stream Enable',
+      ],
+      meaning: '系统软件是密钥与配置的唯一来源，必须保证密钥只经安全会话传输；平台信任策略本身不在 IDE 规范范围内。',
+      value: '配置 + 密钥',
+    },
+    'ide-spdm': {
+      title: 'SPDM 安全会话',
+      kind: '协议',
+      io: 'Requester ↔ Responder',
+      formula: ['GET_VERSION / CAPABILITIES / ALGORITHMS', '证书 / 度量 / KEY_EXCHANGE / FINISH', '之后的消息在安全会话内传递'],
+      meaning: '先认证对端身份并建立加密会话，后续 IDE_KM 才可信；没有这一步，密钥可能被中间人替换。',
+      value: '认证 + 加密',
+    },
+    'ide-spdm2': {
+      title: 'DOE + CMA-SPDM',
+      kind: '传输',
+      io: 'DOE 数据对象 01h / 02h',
+      formula: ['01h：CMA-SPDM（明文会话建立）', '02h：Secured CMA-SPDM（安全会话）', '也可经 MCTP / SMBus 传输'],
+      meaning: 'DOE 是 IDE 密钥管理最常见的带内传输；RC 直连 EP 时，主机通过 DOE 与 EP 的上游端口完成 SPDM 与 IDE_KM。',
+      value: '01h / 02h',
+    },
+    'ide-km': {
+      title: 'IDE_KM 协议',
+      kind: '协议',
+      io: 'Requester → Responder',
+      formula: [
+        'QUERY / QUERY_RESP：按 PortIndex 查询能力',
+        'KEY_PROG / KP_ACK：256 b Key + 64 b IFV，每条流 6 次',
+        'K_SET_GO / K_SET_STOP / K_GOSTOP_ACK：启停 Key Set',
+      ],
+      meaning: 'IDE_KM 基于 SPDM VENDOR_DEFINED 消息，本身必须放在 Secured-SPDM 中；未受保护的请求必须丢弃且不得响应。',
+      value: '256 b × 6 把 / 流',
+    },
+    'ide-km2': {
+      title: 'IDE_KM 数据对象',
+      kind: '协议',
+      io: '软件 ↔ Partner 端口',
+      formula: [
+        'DW0：Protocol ID = 00h，Object ID = 00h–06h',
+        'KEY_PROG：PortIndex + Stream ID + 子流 + RxTxB + Key Set',
+        'K_SET_GO 后 10 ms 内生效；KP_ACK ≤1 s',
+      ],
+      meaning: '两个 key set 支持热切换：先编程备用 bank，再切 K 位，最后停旧 bank，全程不打断业务。',
+      value: 'K0 / K1 双 bank',
+    },
+    'ide-keys': {
+      title: '密钥库',
+      kind: '存储',
+      io: 'IDE_KM → IDE 引擎',
+      formula: [
+        '每把密钥 256 b',
+        '3 个子流 × Rx / Tx = 6 把 / 流',
+        '收发、子流之间不得复用密钥',
+      ],
+      meaning: '密钥只能存在于受保护存储中，不能出现在调试寄存器或明文缓冲区；旧 bank 在切换后必须标记无效。',
+      value: '256 b × 6',
+    },
+    'ide-keys2': {
+      title: '密钥 bank 与 K 位',
+      kind: '机制',
+      io: 'K 位 → 密钥 bank',
+      formula: ['K=0 → bank 0；K=1 → bank 1', '切换后旧 bank 立即失效', '各子流切换互不影响'],
+      meaning: 'K 位是数据平面上的换钥信号，不需要停止流；接收端看到 K 位翻转就切换 bank，直到软件重新编程旧 bank。',
+      value: '热切换',
+    },
+    'ide-prefix': {
+      title: 'IDE Prefix / OHC-C',
+      kind: '字段',
+      io: '标识流与密钥',
+      formula: [
+        'Byte 0：Fmt = 1001b，Type = 0010b',
+        'Byte 1：PR_Sent_Counter；Byte 2：Stream_ID',
+        'Byte 3[7:4]：Sub-Stream；[3]P [2]M [1]K [0]T',
+      ],
+      meaning: '这是接收端识别 IDE TLP 的唯一入口；NFM 用 1 DW 前缀，FM 把这些字段放进 OHC-C，MAC / PCRC 是否存在由 TS 字段指示。',
+      value: '1 DW = 4 B',
+    },
+    'ide-header': {
+      title: 'Header · 附加认证数据（A）',
+      kind: '字段',
+      io: 'Header → GHASH',
+      formula: ['Header 参与 MAC 计算，但不加密', '路由字段保持明文，便于 Switch 转发'],
+      meaning: '头部不加密是为了让中间端口仍能路由；机密性由载荷加密提供，完整性由 MAC 覆盖头部与载荷。',
+      value: '认证不加密',
+    },
+    'ide-payload': {
+      title: 'Data Payload · 明文 P → 密文 C',
+      kind: '字段',
+      io: 'P → C',
+      formula: ['C = GCTR_K(IV, P)', 'PCRC 可选择随 P 一起加密'],
+      meaning: '载荷是唯一被加密的部分；没有载荷的 TLP（如纯读请求）只受 MAC 保护。',
+      value: 'CTR 加密',
+    },
+    'ide-mac': {
+      title: 'MAC · 96 b 认证标签',
+      kind: '字段',
+      io: 'A + C → MAC',
+      formula: ['MAC = GHASH_H(A, C) ⊕ E_K(J0)', '固定 96 b = 12 B', '流控按 Header Credit 计'],
+      meaning: 'MAC 覆盖前缀 / OHC-C、Header、端到端前缀与密文；聚合时多个 TLP 共用一个 MAC，按聚合单元计算。',
+      value: '12 B',
+    },
+    'ide-out': {
+      title: '输出到对端',
+      kind: '通路',
+      io: 'C + MAC → RX 引擎',
+      formula: ['DL 先做 LCRC / 重传，再交给 IDE 校验', 'IDE 校验失败不重传，直接丢弃并报错'],
+      meaning: 'IDE 复用 DL 的可靠传输，但 MAC 失败不是链路错误，重传也无法修复，因此按安全错误处理。',
+      value: '先 DL 后 IDE',
+    },
+  },
+  tdisp: {
+    'tdisp-tvm': {
+      title: 'TVM · TEE 虚拟机',
+      kind: '软件',
+      io: 'TVM 数据 ↔ TDI',
+      formula: ['TDI 分配给 TVM 后由 TVM 独占', 'T=1 的 TLP 属于该 TVM', '只有 RUN 才能访问 TDI'],
+      meaning: 'TVM 不信任 VMM 与 PF，只信任 TSM 与设备 DSM 提供的安全通道；机密数据只能在 RUN 状态放入 TDI。',
+      value: 'TDI 拥有者',
+    },
+    'tdisp-tvm2': {
+      title: '第二个 TVM',
+      kind: '软件',
+      io: '各自的 TDI ↔ 各自的 IDE 流',
+      formula: ['不同 TVM 使用不同 TDI', '同一对端口可共享一条 IDE 流', 'DSM 保证 TDI 之间隔离'],
+      meaning: '多个 TVM 可以同时使用同一设备的不同 TDI；彼此的数据靠 T 位、地址检查与设备内部隔离区分，而不是靠多条 IDE 流。',
+      value: '独立 TDI',
+    },
+    'tdisp-legacy': {
+      title: 'Legacy VM',
+      kind: '软件',
+      io: '普通 MMIO / DMA',
+      formula: ['隐式信任 VMM', 'TLP 的 T 位为 0', '可共用 IDE 流但不能访问 TVM 机密数据'],
+      meaning: 'Legacy VM 与 TVM 可以共存；绑定给 TDISP 的 IDE 流也允许承载非 TDISP TLP，但 DSM 必须阻止它们访问 TVM 数据。',
+      value: 'T=0 流量',
+    },
+    'tdisp-vmm': {
+      title: 'VMM · 资源管理',
+      kind: '软件',
+      io: '配置空间 / PF 接口 → TDI',
+      formula: ['锁定前配置 BAR、队列、地址映射', '锁定后不得影响 TDI 安全属性', '通过 PF 驱动管理设备'],
+      meaning: 'VMM 与 PF 负责资源管理，但不在 TVM 的 TCB 内；TDISP 要求设备在锁定后检测并拒绝它们的安全相关改动。',
+      value: '不在 TVM 的 TCB',
+    },
+    'tdisp-tsm': {
+      title: 'TSM · 主机侧信任代理',
+      kind: '软件',
+      io: 'TVM ↔ DSM',
+      formula: [
+        '认证设备并建立 SPDM 安全会话',
+        '发起 LOCK / REPORT / START / STOP',
+        '绑定 IDE 流并维护 TDI 状态',
+      ],
+      meaning: 'TSM 代表 TVM 执行 TDISP；它必须保证请求发生在安全会话内，并把 nonce 与 IDE Stream ID 一并绑定到 TDI。',
+      value: 'TDISP 发起方',
+    },
+    'tdisp-mem': {
+      title: 'TEE memory',
+      kind: '存储',
+      io: 'TVM 机密数据',
+      formula: ['必须具备机密性机制', '可选提供完整性', 'HPA 由 TA 转换后访问'],
+      meaning: 'TEE 内存是 TVM 机密数据的存放处；IDE 只保护链路，内存本身的加密 / 完整性由平台机制保证。',
+      value: '机密性必需',
+    },
+    'tdisp-mem2': {
+      title: 'Non-TEE memory',
+      kind: '存储',
+      io: '可共享数据',
+      formula: ['不假定有机密性机制', '对应 IS_NON_TEE_MEM=1 的 MMIO 范围'],
+      meaning: '非 TEE 内存可以与非 TVM 实体共享；只有显式标记为 IS_NON_TEE_MEM 的范围才允许 T=0 访问。',
+      value: '可共享',
+    },
+    'tdisp-ta': {
+      title: 'TA / IOMMU · 地址转换',
+      kind: '硬件',
+      io: 'HPA → TDI / 内存',
+      formula: ['MMIO 请求按 HPA 路由到 TDI', '维护 IOMMU 翻译与访问控制', '错误路由按攻击处理'],
+      meaning: 'TA 把 TVM 的物理地址映射到正确的 TDI 与内存；它和 TSM 一起保证 TLP 不会因为路由错误而绕过访问检查。',
+      value: 'HPA 路由',
+    },
+    'tdisp-pf': {
+      title: 'PF · 管理接口',
+      kind: '硬件',
+      io: 'VMM → TDI 配置',
+      formula: ['锁定前可配置 TDI', '锁定后改动被视为安全违规', '不得访问其它 TDI 的机密数据'],
+      meaning: 'PF 是资源管理入口，但不是信任根；设备必须把它与 TDI 的机密数据隔离，防止 PF 越权访问。',
+      value: '锁定后受限',
+    },
+    'tdisp-dsm': {
+      title: 'DSM · 设备侧信任代理',
+      kind: '硬件',
+      io: 'TDISP 消息 → TDI',
+      formula: [
+        '校验消息来自安全会话',
+        '执行 LOCK / START / STOP 并维护状态',
+        '跟踪配置变化，违规则转 ERROR',
+      ],
+      meaning: 'DSM 是设备内的安全执行点；它必须独立于 PF，拒绝未受安全保护或状态非法的请求。',
+      value: 'TDISP 执行方',
+    },
+    'tdisp-tdi': {
+      title: 'TDI · TEE 设备接口',
+      kind: '接口',
+      io: '状态机 + T 位',
+      formula: ['CONFIG_UNLOCKED → CONFIG_LOCKED → RUN', '任意状态 → ERROR → CONFIG_UNLOCKED', '每个 TDI 有唯一 INTERFACE_ID'],
+      meaning: 'TDI 可以是整个设备、非 IOV Function、PF（含下属 VF）或单个 VF；每个 TDI 有独立状态机与绑定 IDE 流。',
+      value: '独立状态机',
+    },
+    'tdisp-tdi2': {
+      title: 'TDI · 独立安全域',
+      kind: '接口',
+      io: 'TVM ↔ 设备资源',
+      formula: ['每个 TDI 单独锁定 / 启动 / 停止', 'DSM 只允许有效 TDI 被寻址'],
+      meaning: '同一设备内的多个 TDI 可以分别分配给不同 TVM；DSM 必须保证一个 TDI 的操作不会影响另一个 TDI 的安全状态。',
+      value: '可多实例',
+    },
+    'tdisp-tdi3': {
+      title: 'TDI · INTERFACE_ID',
+      kind: '接口',
+      io: 'FUNCTION_ID + Reserved',
+      formula: ['FUNCTION_ID：RID[15:0]、Segment[23:16]、RSV[24]', 'Bus / Segment 在 CONFIG_LOCKED / RUN 不得改变'],
+      meaning: 'INTERFACE_ID 是 TSM 与 DSM 消息中定位 TDI 的唯一标识；RID 变化会让 TDI 进入 ERROR。',
+      value: '12 B',
+    },
+    'tdisp-atc': {
+      title: 'ATC · ATS 翻译缓存',
+      kind: '硬件',
+      io: 'TDI ↔ TA',
+      formula: ['ATS 能力需在设备上使能', 'LOCK / STOP 时失效该 TDI 的翻译', 'P2P 需要 ATS 已启用'],
+      meaning: '设备缓存地址翻译以减少往返；锁定与停止时必须让该 TDI 的旧翻译失效，避免继续访问已撤销的映射。',
+      value: 'ATS 缓存',
+    },
+    'tdisp-cert': {
+      title: '设备证书与私钥',
+      kind: '安全',
+      io: 'SPDM 认证 → TSM / TVM',
+      formula: ['ModelCert：型号级证书', 'per-part DevPrivKey：每颗芯片独立私钥', 'DevCert：设备证书与度量'],
+      meaning: 'TSM 用证书链验证设备身份与固件度量；per-part 私钥让设备无法被另一颗芯片伪装替代。',
+      value: '身份与度量',
+    },
+    'tdisp-statechip': {
+      title: 'TDI 的 TDISP 状态',
+      kind: '状态',
+      io: '每个 TDI 一个实例',
+      formula: ['0 = CONFIG_UNLOCKED', '1 = CONFIG_LOCKED', '2 = RUN', '3 = ERROR'],
+      meaning: 'DEVICE_INTERFACE_STATE 用 1 B 返回该值，所有其它编码保留；TSM 可在任意状态查询。',
+      value: '4 个状态',
+    },
+    'tdisp-msg': {
+      title: 'TSM ↔ DSM 安全消息',
+      kind: '通路',
+      io: 'Secured-SPDM over DOE',
+      formula: [
+        'SPDM VENDOR_DEFINED_REQUEST / RESPONSE',
+        'Application Data 用 AES-256-GCM 保护',
+        '未安全传输的消息丢弃且不响应',
+      ],
+      meaning: 'TDISP 消息复用 DOE 的 SPDM 通道；安全性来自 Secured-SPDM 会话，而不是 TDISP 自己重新造一套加密。',
+      value: 'DOE 01h / 02h',
+    },
+    'tdisp-data': {
+      title: 'TVM 数据通路',
+      kind: '通路',
+      io: 'TVM 内存 ↔ TDI 资源',
+      formula: [
+        'T=1 的 TLP 只能走绑定到该 TDI 的 IDE 流',
+        '内存读 / 写仅 RUN 状态允许',
+        '绑定的 IDE 流 Insecure → TDI 转 ERROR',
+      ],
+      meaning: 'T 位解决“这是谁的 TLP”，IDE 解决“链路上是否机密完整”；两者绑定后，VMM 无法把别的流量混进 TVM 的信任域。',
+      value: 'IDE + T 位',
+    },
+    'tdisp-lock': {
+      title: 'LOCK_INTERFACE_REQUEST（83h）',
+      kind: '消息',
+      io: 'CONFIG_UNLOCKED → CONFIG_LOCKED',
+      formula: [
+        'FLAGS：NO_FW_UPDATE / LOCK_MSIX / BIND_P2P / ALL_REQUEST_REDIRECT',
+        'Stream ID（default stream）+ MMIO_REPORTING_OFFSET',
+        '设备生成 32 B nonce 并在响应中返回',
+      ],
+      meaning: '锁定是信任建立的起点：此后任何影响 TDI 安全的配置改动都会让 TDI 进入 ERROR。默认流必须是 TC0，密钥必须由同一 SPDM 会话编程。',
+      value: '仅 CONFIG_UNLOCKED 合法',
+    },
+    'tdisp-start': {
+      title: 'START_INTERFACE_REQUEST（86h）',
+      kind: '消息',
+      io: 'CONFIG_LOCKED → RUN',
+      formula: [
+        '携带 LOCK 阶段生成的 32 B nonce',
+        '校验通过后进入 RUN 并销毁 nonce',
+        '失败返回 INVALID_NONCE / INVALID_INTERFACE_STATE',
+      ],
+      meaning: 'nonce 校验保证 LOCK 与 START 发生在同一个 SPDM 安全会话内，防止中间人拼接两次合法交互。',
+      value: '仅 CONFIG_LOCKED 合法',
     },
   },
 };

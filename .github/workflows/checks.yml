@@ -48,7 +48,7 @@ jobs:
       - name: Build static artifact
         run: |
           mkdir -p _site
-          cp -R index.html performance.html performance-guide.html topology-guide.html css js .nojekyll _site/
+          cp -R index.html performance.html performance-guide.html topology-guide.html css js media .nojekyll _site/
           VERSION=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)")
           printf '{"version":"%s","commit":"%s","run":"%s","builtAt":"%s"}\n' \
             "$VERSION" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > _site/version.json

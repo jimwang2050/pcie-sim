@@ -27,6 +27,18 @@ themeButton.addEventListener('click', () => {
   applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 });
 
+const motionDialog = get('motion-dialog');
+const motionVideo = get('motion-video');
+get('motion-open').addEventListener('click', () => {
+  motionDialog.showModal();
+  motionVideo.currentTime = 0;
+  motionVideo.play().catch(() => { /* 浏览器阻止自动播放时保留首帧 */ });
+});
+motionDialog.addEventListener('close', () => motionVideo.pause());
+motionDialog.addEventListener('click', event => {
+  if (event.target === motionDialog) motionDialog.close();
+});
+
 const format = value => value == null ? '—' : new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 }).format(value);
 let worker;
 let result;

@@ -111,12 +111,17 @@ export function drawTopology(host, budget, simulation, select, format) {
   const defs = draw(svg, 'defs');
   const grid = draw(defs, 'pattern', { id: 'board-grid', width: 20, height: 20, patternUnits: 'userSpaceOnUse' });
   draw(grid, 'circle', { cx: 1, cy: 1, r: 1, fill: '#294462' });
+  const nodeFill = draw(defs, 'linearGradient', { id: 'node-fill', x1: 0, y1: 0, x2: 0, y2: 1 });
+  draw(nodeFill, 'stop', { offset: '0%', 'stop-color': '#1d3f5a' });
+  draw(nodeFill, 'stop', { offset: '100%', 'stop-color': '#12283c' });
   draw(svg, 'rect', { width: 1160, height: 396, rx: 12, class: 'board-base' });
   draw(svg, 'rect', { width: 1160, height: 396, rx: 12, fill: 'url(#board-grid)' });
   for (const [x, y, width, height, title, description] of layout) {
     draw(svg, 'rect', { x, y, width, height, rx: 10, class: 'chip' });
-    draw(svg, 'text', { x: x + 15, y: y - 23, class: 'chip-title' }, title);
-    draw(svg, 'text', { x: x + 15, y: y - 7, class: 'chip-subtitle' }, description);
+    draw(svg, 'rect', { x: x + 8, y: y - 30, width: Math.min(width - 24, title.length * 9.5 + 22),
+      height: 18, rx: 5, class: 'boundary-label' });
+    draw(svg, 'text', { x: x + 17, y: y - 17, class: 'chip-title' }, title);
+    draw(svg, 'text', { x: x + 17, y: y - 4, class: 'chip-subtitle' }, description);
   }
   if (!p2p) {
     draw(svg, 'rect', { x: 291, y: 184, width: 265, height: 97, rx: 9, class: 'chip-subgroup' });
@@ -177,14 +182,16 @@ export function drawTopology(host, budget, simulation, select, format) {
     const [ax, ay, aw] = nodes[first];
     const [bx] = nodes[second];
     const start = ax + aw, end = bx, center = (start + end) / 2;
-    draw(svg, 'text', { x: center, y: ay - 49, 'text-anchor': 'middle', class: 'cable-title' },
-      `Gen${budget.model.gen} ×${budget.model.lanes}`);
-    draw(svg, 'text', { x: center, y: ay - 33, 'text-anchor': 'middle', class: 'chip-subtitle' },
-      `每向 ${format(budget.link.budgetGBps)} GB/s`);
-    draw(svg, 'text', { x: center, y: ay - 19, 'text-anchor': 'middle', class: 'factor-label' },
-      `FC ${budget.model.creditHeaders}H/${budget.model.creditData}D · ${budget.model.creditReturnNs}ns`);
-    draw(svg, 'text', { x: center, y: ay - 6, 'text-anchor': 'middle', class: 'factor-label' },
-      `传播 ${budget.model.propagationNs} ns`);
+    const cardW = Math.max(112, Math.min(176, end - start - 16));
+    const cardH = cardW >= 160 ? 46 : 40;
+    const cardY = ay - 58;
+    draw(svg, 'rect', { x: center - cardW / 2, y: cardY, width: cardW, height: cardH, rx: 8, class: 'cable-card' });
+    draw(svg, 'text', { x: center, y: cardY + 16, 'text-anchor': 'middle', class: 'cable-card-title' },
+      `PCIe Gen${budget.model.gen} ×${budget.model.lanes}`);
+    draw(svg, 'text', { x: center, y: cardY + 30, 'text-anchor': 'middle', class: 'cable-card-sub' },
+      cardW >= 160 ? `每向 ${format(budget.link.budgetGBps)} GB/s · TX/RX` : `每向 ${format(budget.link.budgetGBps)} GB/s`);
+    if (cardW >= 160) draw(svg, 'text', { x: center, y: cardY + 41, 'text-anchor': 'middle', class: 'factor-label' },
+      `FC ${budget.model.creditHeaders}H/${budget.model.creditData}D · ${budget.model.creditReturnNs}ns · 传播 ${budget.model.propagationNs} ns`);
     for (const [index, id] of [forward, reverse].entries()) {
       const y = ay + 13 + index * 23;
       const kinds = activity.get(id) ?? new Set();
@@ -246,6 +253,9 @@ export function drawTopology(host, budget, simulation, select, format) {
       targets.has(id) ? [`R/W ${node.bandwidth}/${node.writeGBps} GB/s`, `L₀ ${node.latencyNs} ns`] :
       [`L₀ ${node.latencyNs} ns`, ...(width >= 76 ? [`${node.bandwidth} GB/s`] : [])];
     draw(group, 'rect', { x, y, width, height: 62, rx: 5, class: 'hardware-body' });
+    const accent = id === 'host.CMN' ? 'cmn' : /DDR|HBM|BAR/.test(id) ? 'mem' :
+      /AXI|Fabric|sw\./.test(id) ? 'axi' : 'host';
+    draw(group, 'path', { d: `M${x + 7} ${y + 1.5} H${x + width - 7}`, class: `node-accent ${accent}` });
     draw(group, 'text', { x: x + width / 2, y: y + 18, 'text-anchor': 'middle', class: 'hardware-title' }, title);
     draw(group, 'text', { x: x + width / 2, y: y + 31, 'text-anchor': 'middle', class: 'chip-subtitle' }, subtitle);
     factors.forEach((factor, index) => draw(group, 'text', {

@@ -23,10 +23,11 @@ details { margin-top: 12px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .board-scroll { overflow-x: auto; }
 .board { width: 100%; min-width: 920px; display: block; font-family: system-ui, sans-serif; }
-.board-base { fill: #0a1525; }
-.chip { fill: #12243a; stroke: #426181; stroke-width: 1.5; }
+.board-base { fill: #081422; }
+.chip { fill: #0f2033; stroke: #375878; stroke-width: 1.5; }
 .chip-subgroup { fill: #112033; stroke: #537291; stroke-dasharray: 4 3; }
-.chip-title { fill: #e9f1fc; font-size: 16px; font-weight: 750; letter-spacing: .08em; }
+.boundary-label { fill: #0d1a2b; stroke: #3b5a77; }
+.chip-title { fill: #e9f1fc; font-size: 15px; font-weight: 750; letter-spacing: .06em; }
 .chip-subtitle { fill: #abbfd4; font-size: 10px; }
 .factor-label { fill: #bde6ff; font: 9px ui-monospace, monospace; }
 .inactive .factor-label { fill: #9bacc0; }
@@ -84,12 +85,20 @@ details { margin-top: 12px; }
 .internal-bus.return { stroke: #4a7f9b; }
 .internal-arrow { fill: #a9e3ff; stroke: #08111d; stroke-width: .5; }
 .hardware, .wire { cursor: pointer; }
-.hardware-body { fill: #19364f; stroke: #64a1c2; }
-.hardware-title { fill: #e8f4ff; font-size: 11px; font-weight: 700; }
+.hardware-body { fill: url(#node-fill); stroke: #64a1c2; }
+.hardware-title { fill: #e8f4ff; font-size: 12px; font-weight: 700; }
+.node-accent { fill: none; stroke-width: 3; stroke-linecap: round; }
+.node-accent.host { stroke: #52c8ff; }
+.node-accent.mem { stroke: #b9a7ff; }
+.node-accent.cmn { stroke: #ffbd74; }
+.node-accent.axi { stroke: #83e5bc; }
 .hardware.inactive .hardware-body { fill: #17283b; stroke: #466078; }
 .hardware.inactive .hardware-title { fill: #a5b6cc; }
+.hardware.inactive .node-accent { opacity: .35; }
 .hardware[aria-pressed=true] .hardware-body, .hardware:focus-visible .hardware-body { stroke: #ffce83; stroke-width: 2.5; }
-.cable-title { fill: #e8f4ff; font-size: 13px; font-weight: 700; }
+.cable-card { fill: #0f2236; stroke: #3b6b8c; }
+.cable-card-title { fill: #e8f4ff; font-size: 12px; font-weight: 700; }
+.cable-card-sub { fill: #9fc6df; font-size: 9px; }
 .request { color: #60cfff; }
 .posted { color: #ffbd74; }
 .completion { color: #83e5bc; }

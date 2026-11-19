@@ -252,6 +252,14 @@ test('公式与计量边界包含符号定义、单位与物理含义', async ({
   await expect(details).toContainText('半开区间');
 });
 
+test('性能解读入口打开 Archify 说明页', async ({ page }) => {
+  await page.goto('performance.html');
+  await page.getByRole('link', { name: /性能解读/ }).click();
+  await expect(page).toHaveTitle(/PCIe 系统性能实验室怎么读/);
+  await expect(page.locator('body')).toContainText('首片 RTT');
+  await expect(page.locator('body')).toContainText('Root Complex');
+});
+
 test('深色 / 浅色模式可切换并记住选择', async ({ page }) => {
   await page.goto('./performance.html');
   const html = page.locator('html');

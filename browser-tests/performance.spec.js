@@ -25,6 +25,8 @@ test('performance lab opens from the teaching page and runs read/write and Gen6 
   await expect(page.locator('#node-detail')).toContainText('L₀=');
   await page.getByLabel('操作', { exact: true }).selectOption('flow1:1');
   await expect(page.locator('#txn-stops')).toContainText('目标可见');
+  await expect(page.locator('#txn-stops')).toContainText('写 512 B · 操作 flow1:1');
+  await expect(page.locator('.trace-group[data-phase="issue"] .trace-group-note')).toContainText('ops 与 bytes 额度');
   const visiblePin = page.getByRole('button', { name: /里程碑 .*目标可见/ });
   await visiblePin.click();
   await expect(page.locator('#txn-focus')).toContainText('host.DDR · 写入目标可见');

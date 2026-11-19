@@ -6,6 +6,54 @@ const names = {
   'local-accepted': '写入本地接受', 'target-visible': '写入目标可见', done: '业务完成',
 };
 const types = { NP: 'MRd', P: 'MWr', Cpl: 'CplD', read: '本地读', write: '本地写' };
+const num = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 3 });
+const n = value => value == null ? '—' : num.format(value);
+const typeName = packetClass => types[packetClass] ?? packetClass ?? '';
+
+const join = (...parts) => parts.filter(Boolean).join(' · ');
+
+export function eventDetail(event, brief = false) {
+  const size = event.bytes ? `${n(event.bytes)} B` : '';
+  const amount = event.amount != null ? n(event.amount) : '';
+  const usage = event.capacity != null ? `${n(event.used)}/${n(event.capacity)}` : '';
+  const quota = usage ? `（${usage}）` : '';
+  const kind = event.kind === 'read' ? '读' : event.kind === 'write' ? '写' : '';
+  const type = typeName(event.packetClass) || (event.kind === 'read' ? '读' : event.kind === 'write' ? '写' : '');
+  const packet = join(type, size) || event.resource;
+  switch (event.event) {
+    case 'submit':
+      return join(`${kind}${size ? ` ${size}` : ''}`, brief ? '' : `操作 ${event.opId}`);
+    case 'enqueue':
+      return brief ? `申请 ${amount}${quota}` : `申请 ${amount} 个额度，当前占用 ${usage}`;
+    case 'block':
+      return brief ? `等待 ${amount}${quota}` : `申请 ${amount} 受阻，当前占用 ${usage}`;
+    case 'grant':
+      return brief ? `${amount}${quota}` : `${amount} 个额度，占用 ${usage}，等待 ${n(event.waitNs)} ns`;
+    case 'release':
+      return brief ? `${amount}${quota}` : `${amount} 个额度，剩余 ${usage}，持有 ${n(event.heldNs)} ns`;
+    case 'tag-allocated':
+      return join(`Tag ${event.tag}`, brief ? '' : event.requester);
+    case 'mrd-tx-start':
+      return join(`MRd ${size}`, event.txnId, brief || event.tag == null ? '' : `Tag ${event.tag}`);
+    case 'service':
+      return join(packet, brief ? '' : `服务 ${n(event.durationNs)} ns`);
+    case 'arrive':
+      return packet;
+    case 'cpl-rx-end':
+      return brief ? join(`片段 ${(event.fragment ?? 0) + 1}`, size) :
+        `CplD 片段 ${(event.fragment ?? 0) + 1}${size ? ` · ${size}` : ''} 抵达请求方`;
+    case 'completion-arrived':
+      return `${size || event.resource} Completion 抵达`;
+    case 'local-accepted':
+    case 'target-visible':
+      return size || event.resource;
+    case 'done':
+      return join(size, `操作 ${event.opId}`);
+    default:
+      return event.resource;
+  }
+}
+
 
 export function eventName(event) {
   if (/>[^:]+:(P|NP|Cpl):(header|data)$/.test(event.resource) && event.event === 'release') {
@@ -29,7 +77,7 @@ export function createInspector(get, format, playback) {
     next.disabled = index === events.length - 1;
     if (seek) playback.seek(event.atNs);
     const head = document.createElement('h3');
-    head.textContent = `${index + 1} / ${events.length} · ${eventName(event)}`;
+    head.textContent = `${index + 1} / ${events.length} · ${eventName(event)} · ${eventDetail(event)}`;
     const list = document.createElement('dl');
     const field = (label, value) => {
       const term = document.createElement('dt');
@@ -81,7 +129,7 @@ export function createInspector(get, format, playback) {
       '当前仅有解析预算，无事件样本。';
     get('inspect-controls').hidden = !events.length;
     picker.replaceChildren(...events.map((event, index) =>
-      new Option(`${index + 1}. +${format(event.atNs - origin)} ns · ${eventName(event)}`, index)));
+      new Option(`${index + 1}. +${format(event.atNs - origin)} ns · ${eventName(event)} · ${eventDetail(event, true)}`, index)));
     get('inspect-event').textContent = simulation ? '该节点在所选样本中没有事件。可关闭浮窗后切换播放样本。' : '';
     if (events.length) {
       const current = events.findLastIndex(event => event.atNs <= sample.atNs);

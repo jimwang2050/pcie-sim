@@ -1,7 +1,7 @@
 import { DEFAULTS, profile, rcBridgePreset } from './model.js';
 import { drawTopology, nodeLabel } from './topology-view.js';
 import { createPlayback } from './playback-view.js';
-import { createInspector, eventName } from './event-inspector.js';
+import { createInspector, eventName, eventDetail } from './event-inspector.js';
 import { rttBreakdowns, rttLatency } from './rtt-breakdown.js';
 import { createLatencyView } from './latency-view.js';
 import { groupTrace } from './trace-groups.js';
@@ -212,7 +212,7 @@ function timeline(simulation) {
     if (match) host.scrollTop += match.getBoundingClientRect().top - host.getBoundingClientRect().top -
       (host.clientHeight - match.offsetHeight) / 2;
     const start = txTimes.get(event.txnId);
-    get('txn-focus').textContent = `#${index + 1} · ${event.resource} · ${stopName(event)} · +${format(event.atNs - origin)} ns` +
+    get('txn-focus').textContent = `#${index + 1} · ${event.resource} · ${stopName(event)} · ${eventDetail(event)} · +${format(event.atNs - origin)} ns` +
       (event.tag != null ? ` · Tag ${event.tag}` : '') +
       (event.event === 'cpl-rx-end' && start != null ? ` · 该片 RTT ${format(event.atNs - start)} ns` : '');
   };
@@ -222,7 +222,7 @@ function timeline(simulation) {
     button.type = 'button';
     button.setAttribute('aria-pressed', 'false');
     button.append(element('strong', `${index + 1} · ${name}`),
-      element('small', `${event.resource} · +${format(event.atNs - origin)} ns`));
+      element('small', `${event.resource} · ${eventDetail(event)} · +${format(event.atNs - origin)} ns`));
     button.addEventListener('click', () => jump(index));
     buttons.push(button);
     get('txn-stops').append(button);
@@ -246,7 +246,7 @@ function timeline(simulation) {
     for (const event of stage.events) {
       const offset = event.atNs - origin;
       const duration = event.durationNs ?? 0;
-      const label = `${eventName(event)} · ${event.resource}`;
+      const label = `${eventName(event)} · ${event.resource} · ${eventDetail(event, true)}`;
       const row = bar(label, duration || end * .006, end, event.kind === 'write' ? 'write' : '', offset, 'timeline-row');
       row.lastChild.textContent = duration ? `+${format(offset)}` : format(offset);
       row.title = `${label}：${format(offset)} ns${duration ? `，服务 ${format(duration)} ns` : ''}`;

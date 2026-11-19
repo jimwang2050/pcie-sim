@@ -111,7 +111,7 @@ export function simulate(flows, input = {}, options = {}) {
       const finish = () => {
         if (burstLeft || responseLeft) return;
         const at = read ? clock.time : visibleAt;
-        observe('done', path.target, { timeNs: at });
+        observe('done', path.target, { timeNs: at, bytes: op.bytes });
         pending--;
         state.done[op.kind] += op.bytes;
         state.doneOps[op.kind]++;
@@ -126,14 +126,14 @@ export function simulate(flows, input = {}, options = {}) {
         burstLeft--;
         if (!burstLeft) {
           visibleAt = clock.time;
-          if (!read) observe('target-visible', path.target);
+          if (!read) observe('target-visible', path.target, { bytes: op.bytes });
         }
         finish();
       };
       const responded = () => {
         responseLeft--;
         if (!responseLeft && !read) {
-          observe('local-accepted', path.bridge);
+          observe('local-accepted', path.bridge, { bytes: op.bytes });
           state.accepted.write += op.bytes;
           state.localAcceptCount++;
           if (inside(op.at)) state.acceptedLatency.push(clock.time - op.at);
